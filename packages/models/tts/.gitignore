@@ -1,0 +1,14 @@
+.venv/
+output*/
+audio/
+
+__pycache__/
+*.pyc
+*.pkl
+*.pt
+*.ckpt
+
+.DS_Store
+
+*.mp3
+*.wav
