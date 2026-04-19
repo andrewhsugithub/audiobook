@@ -1,5 +1,4 @@
 import os
-import uuid
 from enum import Enum
 from typing import Optional
 
@@ -20,7 +19,7 @@ except ImportError:
 
 
 """
-Please follow OpenAI API naming conventions for the endpoint.
+Please follow OpenAI API naming conventions for the endpoints.
 """
 
 app = FastAPI()
@@ -46,6 +45,7 @@ print(f"Loading ChatterboxTurboTTS onto {device}...")
 # TODO: should load the model in the background and return a loading status until it's ready, rather than blocking the server from starting until the model is loaded, use async loop for this
 model = ChatterboxTurboTTS.from_pretrained(device=device)
 if FISHAUDIO_AVAILABLE:
+    print(f"Loading FishAudio S2 Pro onto {device}...")
     model_fish = load_model("mlx-community/fish-audio-s2-pro-8bit")
 print("Model loaded successfully and is ready for inference!")
 
@@ -77,7 +77,6 @@ class GenerateRequest(BaseModel):
 
 @app.post("/v1/audio/speech")
 def tts(req: GenerateRequest):
-    output_filename = f"{req.output_filename[:-4]}_{uuid.uuid4().hex[:8]}.mp3"
     try:
         if req.model == Model.chatterbox_turbo:
             wav = model.generate(
@@ -95,8 +94,7 @@ def tts(req: GenerateRequest):
             )
 
             os.makedirs("./output", exist_ok=True)
-            output_path = f"./output/{output_filename}"
-
+            output_path = f"./output/{req.output_filename}"
             ta.save(output_path, wav, model.sr)
 
         elif req.model == Model.fishaudio_s2_pro:
@@ -105,12 +103,13 @@ def tts(req: GenerateRequest):
                     status_code=500, detail="FishAudio S2 Pro model not available"
                 )
 
-            output_path = f"./output/{output_filename}"
+            output_path = f"./output/{req.output_filename}"
             generate_audio(
                 model=model_fish,
                 text=req.text,
                 ref_audio=req.audio_prompt_path,
-                file_prefix=output_path[:-4],
+                file_prefix=output_path[:-4],  # without .mp3 extension
+                audio_format="mp3",
                 save=True,
             )
 
@@ -128,7 +127,12 @@ example request body for chatterbox-turbo:
 }
 example request body for fishaudio-s2-pro:
 {
-    "text": "(anxious)(narrator) The darkness pressed in around us as we crept through the Forbidden Forest. Wands raised, we could hear the Death Eaters approaching. (long-break)(hopeful) They had dark magic on their side, but we had something stronger, ... hope, friendship, and the power of light. (gasping)",
+    "text": "(anxious)(narrator)The darkness pressed in around us as we crept through the Forbidden Forest. Wands raised, we could hear the Death Eaters approaching. (long-break)(hopeful)They had dark magic on their side, but we had something stronger, ... hope, friendship, and the power of light. (gasping)",
+    "audio_prompt_path": "audio/voice_preview_jean - alluring and playful femme fatale.mp3",
+    "model": "fishaudio-s2-pro"
+}
+{
+    "text": "[anxious][narrator]The darkness pressed in around us as we crept through the Forbidden Forest. Wands raised, we could hear the Death Eaters approaching. [long-break][hopeful]They had dark magic on their side, but we had something stronger, ... hope, friendship, and the power of light. [gasping]",
     "audio_prompt_path": "audio/voice_preview_jean - alluring and playful femme fatale.mp3",
     "model": "fishaudio-s2-pro"
 }
