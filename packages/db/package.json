@@ -1,0 +1,23 @@
+{
+  "name": "db",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "packageManager": "pnpm@11.0.0-beta.2",
+  "type": "module",
+  "dependencies": {
+    "drizzle-orm": "^0.45.2",
+    "postgres": "^3.4.9",
+    "@audiobook/shared-libs": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "^25.6.0",
+    "drizzle-kit": "^0.31.10"
+  }
+}
