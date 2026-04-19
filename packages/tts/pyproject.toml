@@ -8,5 +8,10 @@ dependencies = [
     "chatterbox-tts",
 ]
 
+[project.optional-dependencies]
+fishaudio-s2-pro-mlx = [
+    "mlx-audio>=0.4.2",
+]
+
 [tool.uv.sources]
 chatterbox-tts = { git = "https://github.com/resemble-ai/chatterbox.git" }
