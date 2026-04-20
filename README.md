@@ -43,3 +43,8 @@ uv run uvicorn server:app --port 7777
 ```bash
 pnpm start
 ```
+
+## Documentation
+
+- API documentation is available at [http://localhost:3000/docs](http://localhost:3000/docs) after starting the application.
+- TTS server API documentation is available at [http://localhost:7777/docs](http://localhost:7777/docs) after starting the TTS server.
