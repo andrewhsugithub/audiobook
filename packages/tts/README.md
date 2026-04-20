@@ -10,3 +10,8 @@ uv run uvicorn server:app --port 7777
 uv run uvicorn server:app --port 7777 --reload # for development
 # check localhost:7777/docs for API docs
 ```
+
+## Voices can be found at:
+
+- [ElevenLabs](https://elevenlabs.io/app/voice-library?use_cases=characters_animation)
+- [Fish Audio](https://fish.audio/app/discovery/)
