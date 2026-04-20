@@ -4,11 +4,12 @@
   "description": "",
   "main": "index.js",
   "scripts": {
-    "db:start": "docker compose up -d db",
-    "db:stop": "docker compose down",
-    "db:reset": "docker compose down -v",
+    "docker:start": "docker compose --env-file .env.local up -d",
+    "docker:stop": "docker compose --env-file .env.local down",
+    "docker:reset": "docker compose --env-file .env.local down -v",
+    "terraform:setup": "bash ./terraform-setup.sh",
     "api:start": "pnpm --filter @audiobook/api dev",
-    "start": "pnpm db:start && pnpm api:start"
+    "start": "pnpm api:start"
   },
   "keywords": [],
   "author": "",
