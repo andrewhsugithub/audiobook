@@ -4,10 +4,11 @@
   "description": "",
   "main": "index.js",
   "scripts": {
-    "db:start": "docker compose up",
+    "db:start": "docker compose up -d db",
     "db:stop": "docker compose down",
-    "db:reset": "docker compose down -v && docker compose up",
-    "api:start": "pnpm --filter @audiobook/api dev"
+    "db:reset": "docker compose down -v",
+    "api:start": "pnpm --filter @audiobook/api dev",
+    "start": "pnpm db:start && pnpm api:start"
   },
   "keywords": [],
   "author": "",
