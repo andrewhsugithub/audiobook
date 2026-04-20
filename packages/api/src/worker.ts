@@ -16,7 +16,7 @@ export function startWorker() {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(requestBody),
-      signal: AbortSignal.timeout(5 * 60 * 1000), // 5 minutes
+      signal: AbortSignal.timeout(5 * 60 * 1000), // 5 minutes //? not sure if we need this, since pg-boss should handle job timeout with expireInSeconds option, but just in case to prevent hanging worker
     });
 
     if (!response.ok) {
@@ -32,7 +32,7 @@ export function startWorker() {
     }
 
     const result = parsed.data;
-    console.log(`Job ${job.id} done! Saved at: ${result.file_path}`);
+    console.log(`Job ${job.id} done! Saved at: ${result.fileUrl}`);
 
     return result;
   });

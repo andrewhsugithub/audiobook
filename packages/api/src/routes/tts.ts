@@ -9,6 +9,8 @@ import {
   type TTSResponse,
 } from "@audiobook/shared-libs/schema/tts.js";
 import { validator as sValidator, resolver, describeRoute } from "hono-openapi";
+import { getFreshPresignedUrl } from "../s3.js";
+import { S3_PRIVATE_BUCKET } from "@audiobook/shared-libs/config/env.js";
 
 const app = new Hono();
 
@@ -41,10 +43,8 @@ app.post(
   async (c) => {
     const body = c.req.valid("json");
 
-    const jobId = await boss.send("tts-generate", {
-      ...body,
-      output_filename: `${crypto.randomUUID().split("-")[0]}.mp3`,
-    }); // send one job to the queue only, not batch insert
+    // send one job to the queue only, not batch insert
+    const jobId = await boss.send("tts-generate", { ...body });
 
     if (!jobId) {
       return c.json<JobStatusResponse>(
@@ -115,10 +115,27 @@ app.get(
           500,
         );
       }
+
+      const file = result.data;
+      const isExpired = new Date(file.expiresAt).getTime() < Date.now();
+
+      if (isExpired) {
+        const fresh = await getFreshPresignedUrl(
+          file.fileKey,
+          S3_PRIVATE_BUCKET,
+        );
+
+        return c.json<JobStatusResponse>({
+          jobId,
+          status: "completed",
+          ...fresh,
+        });
+      }
+
       return c.json<JobStatusResponse>({
         jobId,
         status: "completed",
-        ...result.data,
+        ...file,
       });
     }
 

@@ -38,7 +38,7 @@ async function boot() {
   await boss.start();
   console.log("✅ pg-boss connected");
 
-  await boss.deleteQueue("tts-generate"); // delete existing queue if exists, for development convenience
+  // await boss.deleteQueue("tts-generate"); // delete existing queue if exists, for development convenience
   await boss.createQueue("tts-generate", {
     retryLimit: 2,
     expireInSeconds: 60 * 10, // 10 minutes

@@ -24,10 +24,10 @@ resource "aws_s3_bucket_server_side_encryption_configuration" "private" {
 resource "aws_s3_bucket_lifecycle_configuration" "private" {
   bucket = aws_s3_bucket.private.id
   rule {
-    id     = "expire-raw-uploads"
+    id     = "cleanup-user-objects"
     status = "Enabled"
     filter { prefix = "users/" }
-    expiration { days = 90 }
+    expiration { days = 7 }
   }
 }
 
