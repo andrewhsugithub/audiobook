@@ -1,6 +1,7 @@
 .venv/
 output*/
 audio/
+voices/
 
 __pycache__/
 *.pyc

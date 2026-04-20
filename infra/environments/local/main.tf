@@ -1,5 +1,5 @@
 provider "aws" {
-  region                      = "ap-east-2"
+  region                      = "us-east-1"
   access_key                  = "test"
   secret_key                  = "test"
   skip_credentials_validation = true
@@ -28,14 +28,14 @@ locals {
   }
 }
 
-resource "aws_s3_object" "audio_samples" {
-  for_each = fileset("${path.module}/../audio", "*")
+resource "aws_s3_object" "voice_samples" {
+  for_each = fileset("${path.module}/../voices", "*")
 
   bucket = module.s3.public_bucket_id
 
-  key    = "audio/${each.value}"
-  source = "${path.module}/../audio/${each.value}"
-  etag   = filemd5("${path.module}/../audio/${each.value}")
+  key    = "voices/${each.value}"
+  source = "${path.module}/../voices/${each.value}"
+  etag   = filemd5("${path.module}/../voices/${each.value}")
 
   # This tells browsers to play the audio, rather than forcing a download
   content_type = lookup(local.mime_types, regex("\\.[^.]+$", each.value), "application/octet-stream")
