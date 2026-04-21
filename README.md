@@ -7,10 +7,13 @@
 3. [Python](https://www.python.org/downloads/)
 4. [uv](https://docs.astral.sh/uv/getting-started/installation/)
 5. [Docker](https://www.docker.com/)
+6. [LocalStack](https://docs.localstack.cloud/getting-started/installation/) (for local S3 testing, optional if you have access to a real S3 bucket)
+   > get pro account using github student pack
+7. [Terraform](https://developer.hashicorp.com/terraform/install)
 
 ## Setup Instructions
 
-1. Copy the example environment file first:
+1. Copy the example environment file first, paste your AWS/LocalStack credentials in `.env.local`:
 
 ```bash
 cp .env.example .env.local
@@ -41,6 +44,8 @@ uv run uvicorn server:app --port 7777
 5. Start the application from the project root:
 
 ```bash
+bash ./terraform-setup.sh
+pnpm docker:start
 pnpm start
 ```
 
