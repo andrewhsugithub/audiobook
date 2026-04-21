@@ -10,7 +10,6 @@ import {
 } from "@audiobook/shared-libs/schema/tts.js";
 import { validator as sValidator, resolver, describeRoute } from "hono-openapi";
 import { getFreshPresignedUrl } from "../s3.js";
-import { S3_PRIVATE_BUCKET } from "@audiobook/shared-libs/config/env.js";
 
 const app = new Hono();
 
@@ -120,10 +119,7 @@ app.get(
       const isExpired = new Date(file.expiresAt).getTime() < Date.now();
 
       if (isExpired) {
-        const fresh = await getFreshPresignedUrl(
-          file.fileKey,
-          S3_PRIVATE_BUCKET,
-        );
+        const fresh = await getFreshPresignedUrl(file.fileKey, file.fileBucket);
 
         return c.json<JobStatusResponse>({
           jobId,

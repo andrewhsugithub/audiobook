@@ -5,9 +5,8 @@ const ModelEnum = z.enum(["chatterbox-turbo", "fishaudio-s2-pro"]);
 export const TTSRequestSchema = z.object({
   text: z.string(),
 
-  voiceS3Key: z.string().optional(), // S3 key for reference audio for voice cloning
-  outputS3KeyPrefix: z.string(), // S3 key prefix for output audio, e.g. "users/{userId}/audio/"
-  isPublic: z.boolean().default(false), // if true, will upload to public bucket, otherwise upload to private bucket
+  voiceURI: z.url({ protocol: /^s3$/ }).optional(), // S3 URI reference audio for voice cloning
+  targetURI: z.url({ protocol: /^s3$/ }), // S3 URI destination folder for where to upload the generated audio, e.g. "s3://bucket/test/"
 
   model: ModelEnum.default("chatterbox-turbo"),
 
@@ -26,6 +25,7 @@ export type TTSRequest = z.infer<typeof TTSRequestSchema>;
 
 export const TTSResponseSchema = z.object({
   fileUrl: z.url(), // presigned URL if private, or public URL if public bucket
+  fileBucket: z.string(),
   fileKey: z.string(),
   expiresAt: z.iso.datetime(), // ISO string of expiration time for the presigned URL, or a far future date for public files
 });

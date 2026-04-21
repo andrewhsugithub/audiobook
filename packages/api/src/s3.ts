@@ -36,6 +36,7 @@ export async function getFreshPresignedUrl(
 
   return {
     fileUrl: url,
+    fileBucket: bucket,
     fileKey: key,
     expiresAt: expiresAt,
   };

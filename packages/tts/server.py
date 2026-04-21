@@ -4,6 +4,7 @@ import tempfile
 from enum import Enum
 from pathlib import Path
 from typing import Optional
+from urllib.parse import urlparse
 from uuid import uuid4
 
 import boto3
@@ -13,7 +14,7 @@ from botocore.config import Config as BotoConfig
 from chatterbox.tts_turbo import ChatterboxTurboTTS
 from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
 
 try:
     from mlx_audio.tts.generate import generate_audio
@@ -45,8 +46,8 @@ s3 = boto3.client(
     config=BotoConfig(signature_version="s3v4"),
 )
 
-PRIVATE_BUCKET = os.environ.get("S3_PRIVATE_BUCKET", "audiobook-local-private")
-PUBLIC_BUCKET = os.environ.get("S3_PUBLIC_BUCKET", "audiobook-local-public")
+PRIVATE_BUCKET = os.environ.get("S3_PRIVATE_BUCKET")
+PUBLIC_BUCKET = os.environ.get("S3_PUBLIC_BUCKET")
 PRESIGN_EXPIRY = 60 * 3  # 30 minutes default
 
 device = (
@@ -82,9 +83,14 @@ class Model(str, Enum):
 
 class GenerateRequest(BaseModel):
     text: str
-    voiceS3Key: Optional[str] = None  # S3 key for reference audio for voice cloning
-    outputS3KeyPrefix: str  # S3 key prefix for where to upload the generated audio, e.g. "test/" or "users/123/"
-    isPublic: bool = False  # whether to upload to public bucket or private bucket
+    voiceURI: Optional[str] = None  # S3 URI reference audio for voice cloning
+    targetURI: str  # S3 URI destination folder for where to upload the generated audio, e.g. "s3://bucket/test/"
+
+    @field_validator("targetURI")
+    def ensure_trailing_slash(cls, v):
+        if not v.endswith("/"):
+            return f"{v}/"
+        return v
 
     # model
     model: Model = Model.chatterbox_turbo  # or Model.fishaudio_s2_pro
@@ -100,48 +106,47 @@ class GenerateRequest(BaseModel):
     normLoudness: bool = True
 
 
-def download_voice(s3_key: str) -> str:
-    bucket = PRIVATE_BUCKET if s3_key.startswith("users/") else PUBLIC_BUCKET
-
+def download_voice(bucket: str, key: str) -> str:
     tmp = tempfile.NamedTemporaryFile(delete=False, suffix=".mp3")
     tmp.close()
-    path = tmp.name
-    print(f"Downloading voice file from S3: bucket={bucket}, key={s3_key} to {path}...")
+    dst = tmp.name
+    print(f"Downloading voice file from S3: bucket={bucket}, key={key} to {dst}...")
 
     try:
-        s3.download_file(bucket, s3_key, path)
-        return path
+        s3.download_file(bucket, key, dst)
+        return dst
     except s3.exceptions.NoSuchKey:
-        if os.path.exists(path):
-            os.remove(path)
-        raise HTTPException(status_code=404, detail=f"Audio file not found: {s3_key}")
+        if os.path.exists(dst):
+            os.remove(dst)
+        raise HTTPException(
+            status_code=404, detail=f"Audio file not found: s3://{bucket}/{key}"
+        )
     except Exception as e:
-        if os.path.exists(path):
-            os.remove(path)
+        if os.path.exists(dst):
+            os.remove(dst)
         raise HTTPException(status_code=500, detail=f"S3 download failed: {e}")
 
 
-def upload_to_s3(local_path: str, s3_key: str, is_public: bool) -> tuple[str, int]:
-    bucket = PRIVATE_BUCKET if not is_public else PUBLIC_BUCKET
+def upload_to_s3(local_path: str, bucket: str, key: str) -> tuple[str, int]:
     try:
         s3.upload_file(
-            local_path, bucket, s3_key, ExtraArgs={"ContentType": "audio/mpeg"}
+            local_path, bucket, key, ExtraArgs={"ContentType": "audio/mpeg"}
         )  # ExtraArgs ensures it plays in browser instead of downloading
-        print(f"Uploaded file to S3: bucket={bucket}, key={s3_key}")
+        print(f"Uploaded file to S3: bucket={bucket}, key={key}")
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"S3 upload failed: {e}")
 
-    if is_public:
+    if "private" not in bucket:
         endpoint = os.environ.get("AWS_ENDPOINT")
         if endpoint:  # LocalStack
-            url = f"{endpoint}/{bucket}/{s3_key}"
+            url = f"{endpoint}/{bucket}/{key}"
         else:  # Real AWS
-            url = f"https://{bucket}.s3.amazonaws.com/{s3_key}"
+            url = f"https://{bucket}.s3.amazonaws.com/{key}"
         return url, "9999-12-31T23:59:59Z"  # effectively never expires for public files
 
     presigned_url = s3.generate_presigned_url(
         "get_object",
-        Params={"Bucket": bucket, "Key": s3_key},
+        Params={"Bucket": bucket, "Key": key},
         ExpiresIn=PRESIGN_EXPIRY,
     )
 
@@ -153,14 +158,24 @@ def upload_to_s3(local_path: str, s3_key: str, is_public: bool) -> tuple[str, in
     return presigned_url, iso_date
 
 
+def process_uri(uri: str) -> tuple[str, str]:
+    parsed_uri = urlparse(uri)
+    bucket = parsed_uri.netloc
+    path = parsed_uri.path.lstrip("/")
+
+    return bucket, path
+
+
 @app.post("/v1/audio/speech")
 def tts(req: GenerateRequest):
     output_filename = f"{uuid4().hex[:8]}.mp3"
-    output_s3_key = f"{req.outputS3KeyPrefix}{output_filename}"
+    dst_bucket, dst_key = process_uri(req.targetURI)
+    output_s3_key = f"{dst_key}{output_filename}"
 
     audio_path = None
-    if req.voiceS3Key:
-        audio_path = download_voice(req.voiceS3Key)
+    if req.voiceURI:
+        voice_bucket, voice_key = process_uri(req.voiceURI)
+        audio_path = download_voice(voice_bucket, voice_key)
 
     try:
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -208,13 +223,14 @@ def tts(req: GenerateRequest):
                 print(f"✅ Found FishAudio output at: {output_tmp_path}")
 
             file_url, expires_at = upload_to_s3(
-                output_tmp_path, output_s3_key, req.isPublic
+                output_tmp_path, dst_bucket, output_s3_key
             )
     finally:
         if audio_path and os.path.exists(audio_path):
             os.remove(audio_path)
 
     return {
+        "fileBucket": dst_bucket,
         "fileKey": output_s3_key,
         "fileUrl": file_url,
         "expiresAt": expires_at,
@@ -225,23 +241,20 @@ def tts(req: GenerateRequest):
 example request body for chatterbox-turbo:
 {
   "text": "The darkness pressed in around us as we crept through the Forbidden Forest[sigh]. Wands raised, we could hear the Death Eaters approaching. They had dark magic on their side, but we had something stronger [gasp] ... hope, friendship, [clear throat] and the power of light.",
-  "voiceS3Key": "voices/harry_potter.mp3",
-  "outputS3KeyPrefix": "test/",
-  "isPublic": true
+  "voiceURI": "s3://audiobook-local-public/voices/harry_potter.mp3",
+  "targetURI": "s3://audiobook-test-public/test/"
 }
 example request body for fishaudio-s2-pro:
 {
     "text": "(anxious)(narrator)The darkness pressed in around us as we crept through the Forbidden Forest. Wands raised, we could hear the Death Eaters approaching. (long-break)(hopeful)They had dark magic on their side, but we had something stronger, ... hope, friendship, and the power of light. (gasping)",
-    "voiceS3Key": "voices/jean.mp3",
+    "voiceURI": "s3://audiobook-local-public/voices/jean.mp3",
     "model": "fishaudio-s2-pro",
-    "outputS3KeyPrefix": "test/",
-    "isPublic": true
+    "targetURI": "s3://audiobook-test-public/test/"
 }
 {
     "text": "[anxious][narrator]The darkness pressed in around us as we crept through the Forbidden Forest. Wands raised, we could hear the Death Eaters approaching. [long-break][hopeful]They had dark magic on their side, but we had something stronger, ... hope, friendship, and the power of light. [gasping]",
-    "voiceS3Key": "voices/jean.mp3",
+    "voiceURI": "s3://audiobook-local-public/voices/jean.mp3",
     "model": "fishaudio-s2-pro",
-    "outputS3KeyPrefix": "test/",
-    "isPublic": true
+    "targetURI": "s3://audiobook-test-private/test/"
 }
 """
