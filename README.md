@@ -32,7 +32,7 @@ cd packages/tts
 uv sync
 ```
 
-See [packages/models/tts/README.md](packages/models/tts/README.md) for more information.
+See [packages/tts/README.md](packages/tts/README.md) for more information.
 
 4. Start the TTS server:
 
