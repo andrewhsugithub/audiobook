@@ -45,8 +45,8 @@ uv run uvicorn server:app --port 7777
 
 ```bash
 # remember to cd back to the project root if you're still in the tts package
-bash ./terraform-setup.sh
 pnpm docker:start
+bash ./terraform-setup.sh # need to wait for localstack docker container to be up before running this
 pnpm start
 ```
 
