@@ -46,8 +46,6 @@ s3 = boto3.client(
     config=BotoConfig(signature_version="s3v4"),
 )
 
-PRIVATE_BUCKET = os.environ.get("S3_PRIVATE_BUCKET")
-PUBLIC_BUCKET = os.environ.get("S3_PUBLIC_BUCKET")
 PRESIGN_EXPIRY = 60 * 3  # 30 minutes default
 
 device = (
