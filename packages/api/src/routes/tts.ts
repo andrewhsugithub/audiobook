@@ -1,5 +1,4 @@
 import { Hono } from "hono";
-// import { sValidator } from "@hono/standard-validator";
 import { boss } from "../queue.js";
 import {
   JobStatusResponseSchema,

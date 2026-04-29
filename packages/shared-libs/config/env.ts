@@ -30,3 +30,6 @@ export const AWS_REGION = parsedEnv.data.AWS_REGION;
 export const AWS_ENDPOINT = parsedEnv.data.AWS_ENDPOINT;
 export const AWS_ACCESS_KEY_ID = parsedEnv.data.AWS_ACCESS_KEY_ID;
 export const AWS_SECRET_ACCESS_KEY = parsedEnv.data.AWS_SECRET_ACCESS_KEY;
+
+export const LLM_URL = parsedEnv.data.LLM_URL;
+export const LLM_API_TOKEN = parsedEnv.data.LLM_API_TOKEN;

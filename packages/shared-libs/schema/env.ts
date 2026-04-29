@@ -8,4 +8,7 @@ export const envSchema = z.object({
   AWS_ENDPOINT: z.string().optional(), // e.g., http://localhost:4566 for LocalStack
   AWS_ACCESS_KEY_ID: z.string().default("test"),
   AWS_SECRET_ACCESS_KEY: z.string().default("test"),
+
+  LLM_URL: z.url(),
+  LLM_API_TOKEN: z.string(),
 });
