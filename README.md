@@ -8,7 +8,7 @@
 4. [uv](https://docs.astral.sh/uv/getting-started/installation/)
 5. [Docker](https://www.docker.com/)
 6. [LocalStack](https://docs.localstack.cloud/getting-started/installation/) (for local S3 testing, optional if you have access to a real S3 bucket)
-   > get pro account using github student pack
+   > get pro account using github student pack [here](https://app.localstack.cloud/auth/sso/public/github?plan=student&_gl=1*1scp05j*_ga*MjA2ODY1NTk4Mi4xNzc2MTk2MjYy*_ga_4G82Z1TR2R*czE3NzcyNzc5MDEkbzYkZzAkdDE3NzcyNzc5MDEkajYwJGwwJGgwJGRXeTVFY21OczFDSTRiMkkxSlM0dko2RU5kcGcwNkhmMUZn)
 7. [Terraform](https://developer.hashicorp.com/terraform/install)
 
 ## Setup Instructions
@@ -41,14 +41,27 @@ cd packages/tts
 uv run uvicorn server:app --port 7777
 ```
 
-5. Start the application from the project root:
+5. Start up the docker container for PostgreSQL and LocalStack (if using):
 
 ```bash
 # remember to cd back to the project root if you're still in the tts package
 pnpm docker:start
-bash ./terraform-setup.sh # need to wait for localstack docker container to be up before running this
-pnpm start
 ```
+
+6. Run the terraform to setup S3 buckets:
+
+````bash
+# need to wait for localstack docker container to be up before running this
+cd ./infra/environments/local
+terraform init
+terraform apply -auto-approve # rerun this if u change the terraform files, it will update accordingly, see the terraform docs for more info
+```
+
+7. Start the application:
+``` bash
+# remember to cd back to the project root if you're still in the tts package
+pnpm start
+````
 
 ## Documentation
 
