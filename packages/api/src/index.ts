@@ -2,6 +2,7 @@ import { serve } from "@hono/node-server";
 import { Hono } from "hono";
 import { boss } from "./queue.js";
 import tts from "./routes/tts.js";
+import llm from "./routes/llm.js";
 import { swaggerUI } from "@hono/swagger-ui";
 import { openAPIRouteHandler } from "hono-openapi";
 import { startWorker } from "./worker.js";
@@ -20,6 +21,7 @@ app.get(
 );
 
 app.route("/audio", tts);
+app.route("/llm", llm);
 
 app.get(
   "/openapi.json",
