@@ -1,11 +1,10 @@
 import { serve } from "@hono/node-server";
 import { Hono } from "hono";
 import { boss } from "./queue.js";
-import tts from "./routes/tts.js";
-import llm from "./routes/llm.js";
 import { swaggerUI } from "@hono/swagger-ui";
 import { openAPIRouteHandler } from "hono-openapi";
-import { startWorker } from "./worker.js";
+import { startTTSWorker } from "./workers/tts.js";
+import audiobook from "./routes/audiobook.js";
 
 const app = new Hono();
 
@@ -20,8 +19,7 @@ app.get(
   }),
 );
 
-app.route("/audio", tts);
-app.route("/llm", llm);
+app.route("/audiobook", audiobook);
 
 app.get(
   "/openapi.json",
@@ -40,15 +38,21 @@ async function boot() {
   await boss.start();
   console.log("✅ pg-boss connected");
 
-  // await boss.deleteQueue("tts-generate"); // delete existing queue if exists, for development convenience
-  await boss.createQueue("tts-generate", {
+  // await boss.deleteQueue("tts"); // delete existing queue if exists, for development convenience
+  // await boss.deleteQueue("add-tags"); // delete existing queue if exists, for development convenience
+  await boss.createQueue("tts", {
     retryLimit: 2,
     expireInSeconds: 60 * 10, // 10 minutes
     deleteAfterSeconds: 60 * 60 * 24, // 24 hours //! doesn't delete for some reason, need investigate
   }); // all other options are default, see QueueOptions interface
-  console.log("✅ pg-boss queue created: tts-generate");
+  await boss.createQueue("add-tags", {
+    retryLimit: 2,
+    expireInSeconds: 60 * 10, // 10 minutes
+    deleteAfterSeconds: 60 * 60 * 24, // 24 hours //! doesn't delete for some reason, need investigate
+  }); // all other options are default, see QueueOptions interface
+  console.log("✅ pg-boss queue created: tts");
 
-  startWorker();
+  startTTSWorker();
   console.log("✅ Worker imported and running");
 
   serve(

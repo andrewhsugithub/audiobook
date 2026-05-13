@@ -1,8 +1,8 @@
+import { AudiobookRequestSchema } from "@audiobook/shared-libs/schema/audiobook.js";
 import { Hono } from "hono";
 import { boss } from "../queue.js";
 import {
   JobStatusResponseSchema,
-  TTSRequestSchema,
   TTSResponseSchema,
   type JobStatusResponse,
   type TTSResponse,
@@ -13,9 +13,9 @@ import { getFreshPresignedUrl } from "../s3.js";
 const app = new Hono();
 
 app.post(
-  "/tts",
+  "/",
   describeRoute({
-    description: "Queue a TTS job",
+    description: "Queue an Audiobook job",
     responses: {
       202: {
         description: "Job queued",
@@ -37,12 +37,12 @@ app.post(
       },
     },
   }),
-  sValidator("json", TTSRequestSchema),
+  sValidator("json", AudiobookRequestSchema),
   async (c) => {
     const body = c.req.valid("json");
 
     // send one job to the queue only, not batch insert
-    const jobId = await boss.send("tts-generate", { ...body });
+    const jobId = await boss.send("add-tags", { ...body });
 
     if (!jobId) {
       return c.json<JobStatusResponse>(
@@ -60,9 +60,9 @@ app.post(
 );
 
 app.get(
-  "/tts/:jobId",
+  "/audiobook/:audiobookId",
   describeRoute({
-    description: "Get TTS job status",
+    description: "Get Audiobook job status",
     responses: {
       200: {
         description: "Job status",
@@ -85,8 +85,8 @@ app.get(
     },
   }),
   async (c) => {
-    const jobId = c.req.param("jobId");
-    const [job] = await boss.findJobs<TTSResponse>("tts-generate", {
+    const jobId = c.req.param("audiobookId");
+    const [job] = await boss.findJobs<TTSResponse>("tts", {
       id: jobId,
     });
 
