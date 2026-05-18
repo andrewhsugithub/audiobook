@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import { Link } from '@tanstack/react-router'
 
 type Props = {
   title: string
@@ -79,9 +80,9 @@ export default function BookCarousel({ title, books }: Props) {
             ›
           </button>
 
-          <a href="#" className="nav-link">
+          <Link to="/library" className="nav-link">
             View All
-          </a>
+          </Link>
         </div>
       </div>
 

@@ -7,7 +7,30 @@ export const Route = createFileRoute('/library')({
 })
 
 function Library() {
-  const { data: featuredBooks } = useFeaturedBooks()
+  // const { data: featuredBooks } = useFeaturedBooks()
+  const featuredBooks = [
+    {
+      id: 1,
+      title: 'Atomic Habits',
+      authors: ['James Clear'],
+      thumbnail: 'https://images.unsplash.com/photo-1544947950-fa07a98d237f',
+      averageRating: 4.8,
+    },
+    {
+      id: 2,
+      title: 'Deep Work',
+      authors: ['Cal Newport'],
+      thumbnail: 'https://images.unsplash.com/photo-1512820790803-83ca734da794',
+      averageRating: 4.5,
+    },
+    {
+      id: 3,
+      title: 'Harry Potter',
+      authors: ['J.K. Rowling'],
+      thumbnail: 'https://images.unsplash.com/photo-1495446815901-a7297e633e8d',
+      averageRating: 4.9,
+    },
+  ]
 
   return (
     <>
@@ -28,15 +51,16 @@ function Library() {
             id="search"
             autoComplete="off"
             autoCorrect="off"
-            placeholder="Search books"
+            placeholder="Search"
             value=""
           />
         </div>
       </header>
+
       <main className="p-2.5 grid gap-2.5 content-start">
         <section className="col-span-full">
-          <h2 className="pb-4 opacity-70 text-base">Featured Books</h2>
-          <ul className="grid gap-x-4 gap-y-10 grid-cols-[repeat(auto-fit,minmax(140px,1fr))]">
+          {/* <h2 className="pb-4 opacity-70 text-base">View All Books</h2> */}
+          <ul className="grid grid-cols-[repeat(auto-fill,minmax(160px,220px))] gap-x-6 gap-y-10 justify-start">
             {featuredBooks?.map((book: any) => (
               <BookCard key={book.id} book={book} />
             ))}
@@ -52,15 +76,15 @@ function BookCard({ book }: { book: any }) {
     <li key={book.id}>
       <a
         href={`/books/${book.id}`}
-        className="grid content-center overflow-hidden relative aspect-1/1.5 border border-solid border-[rgba(245,240,214,0.12)] shadow-[0.25rem_0.25rem_0_#0f0d0e]"
+        className="aspect-[2/3] w-full block overflow-hidden rounded-[24px] shadow-lg transition-all duration-300 hover:scale-[1.02]"
       >
         <img
           src={book.thumbnail}
           alt={book.title}
-          className="min-w-full min-h-full max-w-full top-0 left-0 absolute"
+          className="h-full w-full object-cover"
         />
       </a>
-      <h3 className="pt-3 text-[clamp(1rem,2.5vw,1.1rem)]/[1.2] overflow-hidden text-ellipsis">
+      <h3 className="pt-4 text-[clamp(1rem,2.5vw,1.1rem)]/[1.2] font-bold overflow-hidden text-ellipsis">
         <a
           href="#"
           className="no-underline ease-in-out duration-150 transition-all"
@@ -68,7 +92,7 @@ function BookCard({ book }: { book: any }) {
           {book.title}
         </a>
       </h3>
-      <small className="pt-1.5 uppercase opacity-70 text-xs">
+      <small className="block pt-2 uppercase opacity-70 text-xs">
         {book.authors.join(', ')}
       </small>
       <span className="block pt-3 text-[0.6rem]">
