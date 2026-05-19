@@ -1,12 +1,26 @@
 import { useEffect, useRef, useState } from 'react'
 import { Link } from '@tanstack/react-router'
+import { createStarString } from '../utils/createStarString'
+
+type Book = {
+  id: number | string
+  title: string
+  authors: string[]
+  thumbnail: string
+  averageRating?: number
+}
 
 type Props = {
   title: string
-  books: string[]
+  books: Book[]
+  linkTo?: string
 }
 
-export default function BookCarousel({ title, books }: Props) {
+export default function BookCarousel({
+  title,
+  books,
+  linkTo = '/library',
+}: Props) {
   const scrollRef = useRef<HTMLDivElement>(null)
   const [canScrollLeft, setCanScrollLeft] = useState(false)
   const [canScrollRight, setCanScrollRight] = useState(true)
@@ -80,7 +94,7 @@ export default function BookCarousel({ title, books }: Props) {
             ›
           </button>
 
-          <Link to="/library" className="nav-link">
+          <Link to={linkTo} search={{ title }} className="nav-link">
             View All
           </Link>
         </div>
@@ -92,17 +106,37 @@ export default function BookCarousel({ title, books }: Props) {
         className="flex gap-5 overflow-x-auto px-6 pb-6 pt-2 scroll-smooth"
       >
         {books.map((book) => (
-          <div
-            key={book}
-            className="feature-card min-w-[240px] rounded-[28px] border p-5"
-          >
-            <div className="mb-6 h-44 rounded-2xl bg-gradient-to-br from-teal-300 to-emerald-500" />
-
-            <h3 className="text-lg font-bold">{book}</h3>
-
-            <p className="mt-2 text-sm text-[var(--sea-ink-soft)]">
-              Audiobook Collection
-            </p>
+          <div>
+            <Link
+              key={book.id}
+              to="/books/$bookId"
+              params={{
+                bookId: String(book.id),
+              }}
+              search={{ title }}
+              className="block"
+            >
+              <div className="relative overflow-hidden rounded-[12px] shadow-[0_18px_35px_rgba(0,0,0,0.22)] transition-all duration-300 hover:scale-[1.03]">
+                <div className="aspect-[2/3] w-[220px] overflow-hidden">
+                  <img
+                    src={book.thumbnail}
+                    alt={book.title}
+                    className="h-full w-full object-cover"
+                  />
+                </div>
+              </div>
+              <h3 className="pt-4 line-clamp-1 text-lg font-bold overflow-hidden text-ellipsis transition-all duration-300 hover:opacity-80">
+                {book.title}
+              </h3>
+            </Link>
+            <small className="block pt-2 uppercase opacity-70 text-xs">
+              {book.authors.join(', ')}
+            </small>
+            <span className="block pt-3 text-[0.6rem]">
+              {book.averageRating
+                ? createStarString(book.averageRating)
+                : 'No reviews'}
+            </span>
           </div>
         ))}
       </div>

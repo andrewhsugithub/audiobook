@@ -12,8 +12,8 @@
     "jsx": "react-jsx",
     "module": "ESNext",
     "paths": {
-      "#/*": ["web/src/*"],
-      "@/*": ["web/src/*"]
+      "#/*": ["./web/src/*"],
+      "@/*": ["./web/src/*"]
     },
     "lib": ["ES2022", "DOM", "DOM.Iterable"],
     "types": ["vite/client"],
