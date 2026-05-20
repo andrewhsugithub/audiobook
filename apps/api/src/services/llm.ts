@@ -55,7 +55,7 @@ To his surprise, Ron stifled a snigger. "Well — it's Filch," he said.
 [Ron] [chuckle] "Well — it's Filch,"
 [Narrator] [narration] he said.`;
 
-export async function addTags(text: string): Promise<string> {
+export async function addTags(text: string): Promise<string[]> {
   const completions = await client.chat.completions.create({
     messages: [
       { role: "system", content: SYSTEM_PROMPT },
@@ -70,5 +70,5 @@ export async function addTags(text: string): Promise<string> {
     throw new Error("Failed to generate response");
   }
 
-  return content;
+  return content.split("\n").filter((line) => line.trim() !== "");
 }
