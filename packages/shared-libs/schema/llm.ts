@@ -18,3 +18,12 @@ export const LLMRequestSchema = z
   });
 
 export type LLMRequest = z.infer<typeof LLMRequestSchema>;
+
+
+export const AudiobookWorkerOutputSchema = z.object({
+  bookID: z.string().uuid(),
+  ttsUrl: z.array(z.string()),
+  tags: z.array(z.string()),
+});
+
+export type AudiobookWorkerOutput = z.infer<typeof AudiobookWorkerOutputSchema>;
