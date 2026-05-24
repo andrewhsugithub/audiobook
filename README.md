@@ -120,18 +120,14 @@ terraform apply -auto-approve # rerun this if u change the terraform files, it w
 # remember to cd back to the project root if you're still in the tts package
 pnpm start
 ```
-
-```
+````
 
 </details>
-
 
 ## Documentation
 
 - API documentation is available at [http://localhost:3000/docs](http://localhost:3000/docs) after starting the application.
 - TTS server API documentation is available at [http://localhost:7777/docs](http://localhost:7777/docs) after starting the TTS server.
-
-
 
 ### TODO
 
@@ -139,5 +135,3 @@ pnpm start
 [ ] need to seed voices db with system local voices and also external provider voices
 [ ] need to seed user db with at least one user for testing
 [ ] need to integrate better auth for auth
-```
-````
