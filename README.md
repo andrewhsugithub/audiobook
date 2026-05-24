@@ -6,9 +6,9 @@
 2. [pnpm](https://pnpm.io/installation)
 3. [Python](https://www.python.org/downloads/)
 4. [uv](https://docs.astral.sh/uv/getting-started/installation/)
-5. [cloudflare]
-6. [supabase]
-7. [sonic 3.5](https://docs.cartesia.ai/api-reference/tts/bytes) (or any TTS model of your choice, just make sure to update the TTS worker code accordingly to work with the TTS API you choose)
+5. [cloudflare](https://dash.cloudflare.com/), create account
+6. [supabase](https://supabase.com/dashboard/projects), create account and create a project of any name and add 3 buckets in the storage section: `my-audiobook-public-dev`(make public), `my-audiobook-media-dev`, `my-audiobook-raw-uploads-dev`
+7. [sonic 3.5](https://docs.cartesia.ai/api-reference/tts/bytes) create an api key (or any TTS model of your choice, just make sure to update the TTS worker code accordingly to work with the TTS API you choose)
 <details>
     <summary>Old, changed to cloudflare and supabsse</summary>
 
@@ -23,19 +23,21 @@
 
 ## Setup Instructions
 
-1. Copy the example environment file first, paste your AWS/LocalStack credentials in `.env.local`:
+1. Copy the example environment file first, paste your credentials in `.env.local`:
 
 ```bash
 cp .env.example .env.local
 ```
 
-2. Install Node.js dependencies in the project root:
+2. Install packages in the project root:
 
 ```bash
 pnpm i
 ```
 
 If use third party TTS API, skip to step 5:
+
+3. Start TTS local server (currently still in progress, so better just use third party TTS API for now):
 
 ```bash
 cd packages/tts
