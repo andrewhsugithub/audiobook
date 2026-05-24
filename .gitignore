@@ -17,3 +17,5 @@ todos.json
 
 audio/
 voices/
+
+*.pem
