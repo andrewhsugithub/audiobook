@@ -1,0 +1,128 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "api",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-05-23",
+  "compatibility_flags": ["nodejs_compat"],
+  // must put the queue, r2, ai, ... bindings inside dev since cloudflare doesn't support global vars
+  // "env": {
+  //   "dev": {
+  //     "vars": {
+  //       "RAW_BUCKET_NAME": "my-audiobook-raw-uploads-dev",
+  //       "MEDIA_BUCKET_NAME": "my-audiobook-media-dev",
+  //       "PUBLIC_ASSETS_BUCKET_NAME": "my-audiobook-public-dev",
+  //     },
+  //   },
+  // },
+  // change when deploying to staging/prod
+  "vars": {
+    "RAW_BUCKET_NAME": "my-audiobook-raw-uploads-dev",
+    "MEDIA_BUCKET_NAME": "my-audiobook-media-dev",
+    "PUBLIC_ASSETS_BUCKET_NAME": "my-audiobook-public-dev",
+  },
+  // "kv_namespaces": [
+  //   {
+  //     "binding": "MY_KV_NAMESPACE",
+  //     "id": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+  //   }
+  // ],
+  // "env": {
+  //   "dev": {
+  //     "vars": {
+  //       "STORAGE_PROVIDER": "local",
+  //     },
+  //   },
+  // },
+  "r2_buckets": [
+    {
+      "binding": "my-audiobook-public-dev",
+      "bucket_name": "my-audiobook-public-dev",
+    },
+    {
+      "binding": "my-audiobook-raw-uploads-dev",
+      "bucket_name": "my-audiobook-raw-uploads-dev",
+    },
+    {
+      "binding": "my-audiobook-media-dev",
+      "bucket_name": "my-audiobook-media-dev",
+    },
+  ],
+  // "d1_databases": [
+  //   {
+  //     "binding": "MY_DB",
+  //     "database_name": "my-database",
+  //     "database_id": ""
+  //   }
+  // ],
+  "ai": {
+    "binding": "AI",
+    "remote": true,
+  },
+  "queues": {
+    "producers": [
+      {
+        "binding": "PARSER_QUEUE",
+        "queue": "audiobook-parser",
+      },
+      {
+        "binding": "CHUNKING_QUEUE",
+        "queue": "audiobook-chunking",
+      },
+      {
+        "binding": "TAGGING_QUEUE",
+        "queue": "audiobook-tagging",
+      },
+      {
+        "binding": "VOICE_MAPPING_QUEUE",
+        "queue": "audiobook-voice-mapping",
+      },
+      {
+        "binding": "TTS_QUEUE",
+        "queue": "audiobook-tts",
+      },
+      {
+        "binding": "HLS_QUEUE",
+        "queue": "audiobook-hls",
+      },
+    ],
+    "consumers": [
+      {
+        "queue": "audiobook-parser",
+        "max_batch_size": 10,
+        "max_batch_timeout": 5,
+      },
+      {
+        "queue": "audiobook-chunking",
+        "max_batch_size": 10,
+        "max_batch_timeout": 5,
+      },
+      {
+        "queue": "audiobook-tagging",
+        "max_batch_size": 1,
+      },
+      {
+        "queue": "audiobook-voice-mapping",
+        "max_batch_size": 1,
+      },
+      {
+        "queue": "audiobook-tts",
+        "max_batch_size": 5,
+      },
+      {
+        "queue": "audiobook-hls",
+        "max_batch_size": 10,
+      },
+    ],
+  },
+  // generate yours via `wrangler hyperdrive <binding_name> --connection-string <db-connection-string>`
+  "hyperdrive": [
+    {
+      "binding": "HYPERDRIVE",
+      "id": "5d4da2fd38a441409bccfda07a1f8e66",
+    },
+  ],
+  // "observability": {
+  //   "enabled": true,
+  //   "head_sampling_rate": 1
+  // }
+}

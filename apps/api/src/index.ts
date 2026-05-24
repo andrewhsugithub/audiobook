@@ -1,12 +1,15 @@
-import { serve } from "@hono/node-server";
 import { Hono } from "hono";
-import { boss } from "./queue.js";
-import { swaggerUI } from "@hono/swagger-ui";
+import { queue } from "./queue.js";
 import { openAPIRouteHandler } from "hono-openapi";
-import { startTTSWorker } from "./workers/tts.js";
+import { swaggerUI } from "@hono/swagger-ui";
 import audiobook from "./routes/audiobook.js";
-import { startLLMWorker } from "./workers/llm.js";
-const app = new Hono();
+import upload from "./routes/upload.js";
+
+type Env = {
+  Bindings: Cloudflare.Env;
+};
+
+const app = new Hono<Env>();
 
 app.get("/", (c) => {
   return c.text("Hello Hono!");
@@ -19,7 +22,8 @@ app.get(
   }),
 );
 
-app.route("/audiobook", audiobook);
+// app.route("/audiobook", book);
+app.route("/upload", upload);
 
 app.get(
   "/openapi.json",
@@ -34,37 +38,30 @@ app.get(
   }),
 );
 
-async function boot() {
-  await boss.start();
-  console.log("✅ pg-boss connected");
+// app.get("/tagging", async (c) => {
+//   await c.env.TAGGING_QUEUE
+//     .send(`As it happened, just as the Captain was taking his first bite, Angeliki was walking past. She could not help asking.
 
-  await boss.deleteQueue("tts"); // delete existing queue if exists, for development convenience
-  await boss.deleteQueue("add-tags"); // delete existing queue if exists, for development convenience
-  await boss.createQueue("tts", {
-    retryLimit: 2,
-    expireInSeconds: 60 * 10, // 10 minutes
-    deleteAfterSeconds: 60 * 60 * 24, // 24 hours //! doesn't delete for some reason, need investigate
-  }); // all other options are default, see QueueOptions interface
-  await boss.createQueue("add-tags", {
-    retryLimit: 2,
-    expireInSeconds: 60 * 10, // 10 minutes
-    deleteAfterSeconds: 60 * 60 * 24, // 24 hours //! doesn't delete for some reason, need investigate
-  }); // all other options are default, see QueueOptions interface
-  console.log("✅ pg-boss queue created: tts");
-  console.log("✅ pg-boss queue created: add-tags");
-  startLLMWorker();
-  startTTSWorker();
-  console.log("✅ Worker imported and running");
+// “How’s the tiropita, sir?”
 
-  serve(
-    {
-      fetch: app.fetch,
-      port: 3000,
-    },
-    (info) => {
-      console.log(`✅ Hono Server running on http://localhost:${info.port}`);
-    },
-  );
-}
+// “Oh delicious, thank you. It brings back memories,” said the captain.
 
-boot().catch(console.error);
+// And then he looked up at her again.
+
+// She seemed strangely familiar.
+
+// “You know, I just arrived here, but I feel like this is a home from home,” he said.
+
+// “Aw that’s a lovely compliment,” smiled Angeliki, obviously pleased.`);
+// });
+
+// app.get("/tagging2", async (c) => {
+//   await c.env.TAGGING_QUEUE.send(
+//     `As it happened, just as the Captain was taking his first bite, Angeliki was walking past. She could not help asking.`,
+//   );
+// });
+
+export default {
+  fetch: app.fetch,
+  queue: queue,
+};
