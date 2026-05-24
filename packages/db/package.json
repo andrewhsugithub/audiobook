@@ -1,5 +1,5 @@
 {
-  "name": "db",
+  "name": "@audiobook/db",
   "version": "1.0.0",
   "description": "",
   "main": "index.js",
@@ -12,9 +12,9 @@
   "packageManager": "pnpm@11.0.0-beta.2",
   "type": "module",
   "dependencies": {
+    "@audiobook/shared-libs": "workspace:*",
     "drizzle-orm": "^0.45.2",
-    "postgres": "^3.4.9",
-    "@audiobook/shared-libs": "workspace:*"
+    "postgres": "^3.4.9"
   },
   "devDependencies": {
     "@types/node": "^25.6.0",
