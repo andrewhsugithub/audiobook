@@ -73,6 +73,7 @@ Copy the user id and put it in the request body when testing the API routes.
 
 ```bash
 cd apps/api
+pnpm cf-typegen
 pnpm dev
 ```
 
