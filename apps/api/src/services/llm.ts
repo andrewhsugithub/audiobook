@@ -57,21 +57,17 @@ To his surprise, Ron stifled a snigger. "Well — it's Filch," he said.
 [Ron] [chuckle] "Well — it's Filch,"
 [Narrator] [narration] he said.`;
 
-export async function addTags(text: string): Promise<string[]> {
+export async function addTags(text: string) {
   const completions = await client.chat.completions.create({
     messages: [
       { role: "system", content: SYSTEM_PROMPT },
       { role: "user", content: text },
     ],
     // model: "gemma-4-26b-a4b-it",
-    model: "qwen/qwen3.5-9b",
+    model: "@cf/google/gemma-4-26b-a4b-it",
+    // model: "qwen/qwen3.5-9b",
     // temperature: 0.7,
   });
 
-  const content = completions.choices[0].message.content;
-  if (!content) {
-    throw new Error("Failed to generate response");
-  }
-
-  return content.split("\n").filter((line) => line.trim() !== "");
+  return completions;
 }
