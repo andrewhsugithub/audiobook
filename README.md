@@ -66,6 +66,18 @@ npx drizzle-kit push
 npx wrangler hyperdrive create hyperdrive --connection-string=<your-connection-string> --env-file ../../.env.local
 ```
 
+paste your connection string in the `CLOUDFLARE_HYPERDRIVE_LOCAL_CONNECTION_STRING_HYPERDRIVE` variable in the `.env.local` file
+and paste the id in `apps/api/wrangler.jsonc`
+
+```json
+"hyperdrive": [
+    {
+      "binding": "HYPERDRIVE",
+      "id": <YOUR_HYPERDRIVE_ID>,
+    },
+  ],
+```
+
 7. Create a user in the database for testing:
 
 Go to supabase dashboard, go to Table editor, find the `users` table, press insert row.
