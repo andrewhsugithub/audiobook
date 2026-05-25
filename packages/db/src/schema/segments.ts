@@ -68,6 +68,7 @@ export const segments = pgTable(
       table.audiobookId,
       table.hlsSequenceNumber,
     ),
+    index("segments_voice_idx").on(table.voiceId),
 
     // processing query: "give me all pending segments for this book"
     // index("segments_audiobook_status_idx").on(table.audiobookId, table.status),
