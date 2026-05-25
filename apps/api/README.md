@@ -92,9 +92,10 @@ my-audiobook-media-dev/
 
 ### TODO:
 
-- [ ] need a queue that polls status from db and see which audiobook is not finished then trigger the next step in the pipeline
-- [ ] check/fix/refactor multipart uploading
-- [ ] fix hls sequencing, currently the order may be wrong since workers are async, currently it's `{chunkNumber}_{sequence in chunk}`
-- [ ] add voice mapping worker, discuss the order of voice mapping worker, should the voice mapping have context of the whole book or just the chunk?
+- [ ] add voice mapping worker
+- [ ] add hls packaging worker
 - [ ] refactor all worker queues to extract the service logic to /services folder and keep the worker files just for queue handling and orchestration
+- [ ] check/fix/refactor multipart uploading
 - [ ] consider parsing by chapter
+- [ ] need a queue that polls status from db and see which audiobook is not finished then trigger the next step in the pipeline
+- [ ] discuss the order of voice mapping worker, should the voice mapping have context of the whole book or just the chunk?
