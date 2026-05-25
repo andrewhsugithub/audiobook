@@ -122,13 +122,13 @@ const myBooks = books.slice(0, 1)
 
 function App() {
   return (
-    <div className="page-wrap rise-in py-10">
+    <div className="min-w-[500px] page-wrap rise-in py-10">
       {/* Header */}
       <div className="mb-10 flex items-center justify-between">
         <div>
           <p className="island-kicker mb-2">Audiobook Platform</p>
 
-          <h1 className="display-title text-6xl font-bold">Audiobook Store</h1>
+          <h1 className="display-title text-6xl font-bold">Audiobook</h1>
         </div>
 
         <button className="island-shell rounded-full px-5 py-3">Browse</button>

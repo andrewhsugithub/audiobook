@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { Link } from '@tanstack/react-router'
 import { createStarString } from '../utils/createStarString'
+import BookCard from './BookCard'
 
 type Book = {
   id: number | string
@@ -103,41 +104,46 @@ export default function BookCarousel({
       {/* Carousel */}
       <div
         ref={scrollRef}
-        className="flex gap-5 overflow-x-auto px-6 pb-6 pt-2 scroll-smooth"
+        className="flex gap-15 overflow-x-auto px-6 pb-6 pt-2 scroll-smooth no-scrollbar list-none"
       >
         {books.map((book) => (
-          <div>
-            <Link
-              key={book.id}
-              to="/books/$bookId"
-              params={{
-                bookId: String(book.id),
-              }}
-              search={{ title }}
-              className="block"
-            >
-              <div className="relative overflow-hidden rounded-[12px] shadow-[0_18px_35px_rgba(0,0,0,0.22)] transition-all duration-300 hover:scale-[1.03]">
-                <div className="aspect-[2/3] w-[220px] overflow-hidden">
-                  <img
-                    src={book.thumbnail}
-                    alt={book.title}
-                    className="h-full w-full object-cover"
-                  />
-                </div>
-              </div>
-              <h3 className="pt-4 line-clamp-1 text-lg font-bold overflow-hidden text-ellipsis transition-all duration-300 hover:opacity-80">
-                {book.title}
-              </h3>
-            </Link>
-            <small className="block pt-2 uppercase opacity-70 text-xs">
-              {book.authors.join(', ')}
-            </small>
-            <span className="block pt-3 text-[0.6rem]">
-              {book.averageRating
-                ? createStarString(book.averageRating)
-                : 'No reviews'}
-            </span>
-          </div>
+          <BookCard
+            key={book.id}
+            book={book}
+            libraryTitle={title || 'Library'}
+            variant="carousel"
+          />
+          // <div key={book.id}>
+          //   <Link
+          //     to="/books/$bookId"
+          //     params={{
+          //       bookId: String(book.id),
+          //     }}
+          //     search={{ title }}
+          //     className="block"
+          //   >
+          //     <div className="relative overflow-hidden rounded-[12px] shadow-[0_18px_35px_rgba(0,0,0,0.22)] transition-all duration-300 hover:scale-[1.03]">
+          //       <div className="aspect-[2/3] w-[220px] overflow-hidden">
+          //         <img
+          //           src={book.thumbnail}
+          //           alt={book.title}
+          //           className="h-full w-full object-cover"
+          //         />
+          //       </div>
+          //     </div>
+          //     <h3 className="pt-4 line-clamp-1 text-lg font-bold overflow-hidden text-ellipsis transition-all duration-300 hover:opacity-80">
+          //       {book.title}
+          //     </h3>
+          //   </Link>
+          //   <small className="block pt-2 uppercase opacity-70 text-xs">
+          //     {book.authors.join(', ')}
+          //   </small>
+          //   <span className="block pt-3 text-[0.6rem]">
+          //     {book.averageRating
+          //       ? createStarString(book.averageRating)
+          //       : 'No reviews'}
+          //   </span>
+          // </div>
         ))}
       </div>
     </div>
