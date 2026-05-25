@@ -1,41 +1,73 @@
 import { createFileRoute } from '@tanstack/react-router'
-import { useBookQuery } from '../utils/queries'
-import { createStarString } from '../utils/createStarString'
+import { useEffect, useRef, useState } from 'react'
+
+import Rating from '../components/Rating'
+import Header from '../components/Header'
+import AudioPlayer from '../components/AudioPlayer'
 
 export const Route = createFileRoute('/books/$bookId')({
   component: RouteComponent,
 })
 
 function RouteComponent() {
+  const { title } = Route.useSearch() as { title?: string }
   const bookId = Route.useParams().bookId
-  const bookQuery = useBookQuery(bookId)
+  // const bookQuery = useBookQuery(bookId)
+
+  const fakeBook = {
+    id: bookId,
+    title: 'Atomic Habits',
+    authors: ['James Clear'],
+    thumbnail: 'https://placehold.co/300x450',
+    averageRating: 4.8,
+    description: 'A practical guide about building better habits.',
+  }
+  const bookQuery = { data: fakeBook }
+
+  const savedBooks = JSON.parse(localStorage.getItem('myBooks') || '[]')
+
+  const [isInLibrary, setIsInLibrary] = useState(false)
+
+  useEffect(() => {
+    const savedBooks = JSON.parse(localStorage.getItem('myBooks') || '[]')
+
+    const exists = savedBooks.some(
+      (item: any) => String(item.id) === String(bookId),
+    )
+
+    setIsInLibrary(exists)
+  }, [bookId])
+
+  const addToMyLibrary = () => {
+    if (isInLibrary) return
+
+    const book = bookQuery.data
+    if (!book) return
+
+    const savedBooks = JSON.parse(localStorage.getItem('myBooks') || '[]')
+
+    localStorage.setItem('myBooks', JSON.stringify([...savedBooks, book]))
+
+    setIsInLibrary(true)
+  }
 
   return (
-    <>
-      <header className="py-4 px-10 flex justify-between items-center gap-4 border-b-5 border-solid border-[rgba(245,240,214,0.12)] bg-(--brand-charcoal) sticky top-0 z-999">
-        <h1 className="uppercase font-[--font-rye] font-bold cursor-pointer">
-          <a
-            href="/library"
-            className="no-underline ease-in-out duration-150 transition-all"
-          >
-            Library
-          </a>
-        </h1>
-        <div className="relative">
-          <input
-            className="h-8 py-2 px-4 bg-(--panel-bg) rounded-md border border-solid border-[rgba(245,240,214,0.12)] font-(--font-outfit) text-sm text-(--body-text) ease-in-out duration-150 transition-all"
-            type="text"
-            name="search"
-            id="search"
-            autoComplete="off"
-            autoCorrect="off"
-            placeholder="Search books"
-            value=""
-          />
-        </div>
-      </header>
+    <div className="min-w-[360px]">
+      <Header
+        title={title || 'Library'}
+        backTo="/library"
+        backSearch={{
+          title: title || 'Library',
+        }}
+      />
       <main className="p-2.5 content-start max-w-212.5 mx-auto gap-10 grid min-[551px]:grid-cols-[minmax(150px,1fr)_1.5fr]">
-        <div>
+        {/* <div className="absolute inset-0 -z-10 overflow-hidden">
+          <img
+            src={bookQuery.data?.thumbnail}
+            className="h-full w-full object-cover blur-3xl opacity-20 scale-110"
+          />
+        </div> */}
+        <div className="group [perspective:900px]">
           <span className="grid place-content-center overflow-hidden relative aspect-1/1.5 border border-solid border-[rgba(245,240,214,0.12)] shadow-[0.25rem_0.25rem_0_#0f0d0e]">
             {bookQuery.data ? (
               <img
@@ -46,20 +78,52 @@ function RouteComponent() {
             ) : null}
           </span>
         </div>
-        <div>
-          <h2 className="opacity-100 text-[clamp(1.1rem,2.5vw,1.4rem)] pb-4">
+        <div className="flex flex-col justify-center">
+          <h2 className="display-title text-3xl font-bold">
             {bookQuery.data?.title || 'Loading...'}
           </h2>
-          <small className="block opacity-70 text-xs">
+          <small className="mt-4 text-xl uppercase opacity-70">
             {bookQuery.data?.authors?.join(', ') || 'Anonymous'}
           </small>
           <span className="block pt-4">
-            {bookQuery.data?.averageRating
-              ? createStarString(bookQuery.data.averageRating)
-              : 'No reviews'}
+            {bookQuery.data?.averageRating ? (
+              <Rating rating={bookQuery.data.averageRating} />
+            ) : (
+              'No reviews'
+            )}
           </span>
+          <div className="mt-8 flex gap-4">
+            {/* <button className="rounded-full bg-white px-6 py-3 font-semibold text-black">
+              ▶ Listen Now
+            </button> */}
+
+            <button
+              onClick={addToMyLibrary}
+              disabled={isInLibrary}
+              className={`
+                rounded-full px-6 py-3
+                transition-all duration-300
+
+                ${
+                  isInLibrary
+                    ? `
+                      cursor-not-allowed
+                      opacity-50
+                      bg-white/5
+                    `
+                    : `
+                      island-shell
+                      hover:scale-105
+                    `
+                }
+              `}
+            >
+              {isInLibrary ? '✓ In My Library' : '+ My Library'}
+            </button>
+          </div>
+          <AudioPlayer duration={240} initialTime={75} />
           <div
-            className="pt-4 overflow-hidden text-ellipsis"
+            className="mt-10 max-w-3xl leading-8 text-[var(--sea-ink-soft)]"
             dangerouslySetInnerHTML={{
               __html:
                 bookQuery.data?.description ||
@@ -68,6 +132,6 @@ function RouteComponent() {
           ></div>
         </div>
       </main>
-    </>
+    </div>
   )
 }

@@ -304,3 +304,11 @@ a {
     transform: translateY(0);
   }
 }
+
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+
+.no-scrollbar {
+  scrollbar-width: none;
+}
