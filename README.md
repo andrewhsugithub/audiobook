@@ -68,7 +68,7 @@ npx wrangler hyperdrive create hyperdrive --connection-string=<your-db-connectio
 ```
 
 paste your db connection string in the `CLOUDFLARE_HYPERDRIVE_LOCAL_CONNECTION_STRING_HYPERDRIVE` variable in the `.env.local` file
-and paste the id in `apps/api/wrangler.jsonc`
+and paste the id in `apps/api/wrangler.jsonc` and `.env.local`'s `HYPERDRIVE_ID` variable:
 
 ```json
 "hyperdrive": [
