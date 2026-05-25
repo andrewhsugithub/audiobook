@@ -1,8 +1,8 @@
 import { extractText, getDocumentProxy } from "unpdf";
-import { assets, audiobooks } from "@audiobook/db/src/db/schema/schema.js";
-import { eq } from "@audiobook/db/src/index.js";
-import { storage } from "../storage/storage.js";
-import { getDb } from "@audiobook/db/src/index.js";
+import { assets, audiobooks } from "@audiobook/db/src/schema/schema";
+import { eq } from "@audiobook/db/src/index";
+import { storage } from "../storage/storage";
+import { getDb } from "@audiobook/db/src/index";
 
 export interface ParserJobData {
   audiobookId: string;

@@ -2,11 +2,11 @@
 //! Across playlist updates: gaps/jumps are allowed.
 //! Inside one playlist: segment sequence numbers are implicitly consecutive from the starting MEDIA-SEQUENCE.
 
-import { getDb, eq } from "@audiobook/db/src/index.js";
-import { segments } from "@audiobook/db/src/db/schema/segments.js";
-import { providerEnum, voices } from "@audiobook/db/src/db/schema/voices.js";
-import { audiobooks } from "@audiobook/db/src/db/schema/schema.js";
-import { storage } from "../storage/storage.js";
+import { getDb, eq } from "@audiobook/db/src/index";
+import { segments } from "@audiobook/db/src/schema/segments";
+import { providerEnum, voices } from "@audiobook/db/src/schema/voices";
+import { audiobooks } from "@audiobook/db/src/schema/schema";
+import { storage } from "../storage/storage";
 
 export interface VoiceMappingJobData {
   audiobookId: string;
@@ -15,7 +15,7 @@ export interface VoiceMappingJobData {
 }
 
 type Provider = (typeof providerEnum.enumValues)[number];
-const PROVIDER: Provider = "@cf/deepgram/aura-2-en"; //? maybe can be passed in the message body instead of hardcoding
+// const PROVIDER: Provider = "@cf/deepgram/aura-2-en"; //? maybe can be passed in the message body instead of hardcoding
 
 export async function handleVoiceMappingQueue(
   batch: MessageBatch<VoiceMappingJobData>,

@@ -1,30 +1,8 @@
-// // TODO: Use BullMQ with Redis instead of pg-boss for better performance and reliability.
-// import { DATABASE_URL } from "@audiobook/shared-libs/config/env.js";
-
-// import { PgBoss } from "pg-boss";
-
-// const connectionString = DATABASE_URL;
-
-// export const boss = new PgBoss(connectionString);
-
-// boss.on("error", (error) => console.error("pg-boss error:", error));
-
-// import { handleParserQueue } from "./workers/parser";
-// import { handleChunkingQueue } from "./workers/chunking";
-// import { handleVoiceMappingQueue } from "./workers/voiceMapping";
-// import { handleTTSQueue } from "./workers/tts";
-// import { handleHLSQueue } from "./workers/hls";
 import { handleChunkingQueue } from "./workers/chunker";
 import { handleParserQueue } from "./workers/parser";
 import { handleTaggingQueue } from "./workers/tagging";
 import { handleVoiceMappingQueue } from "./workers/voiceMapper";
 import { handleTTSQueue } from "./workers/tts";
-
-// type QueueHandler = (
-//   batch: MessageBatch<any>,
-//   env: Cloudflare.Env,
-//   ctx: ExecutionContext,
-// ) => Promise<void>;
 
 export async function queue(
   batch: MessageBatch<any>,

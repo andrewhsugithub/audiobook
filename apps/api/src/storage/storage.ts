@@ -1,8 +1,8 @@
 import {
   S3CompatibleStorageProvider,
   R2NativeStorageProvider,
-} from "./provider.js";
-import { type StorageProvider } from "./interface.js";
+} from "./provider";
+import { type StorageProvider } from "./interface";
 
 export const BUCKETS = {
   RAW_UPLOADS: process.env.RAW_UPLOADS_BUCKET ?? "my-audiobook-raw-uploads-dev",

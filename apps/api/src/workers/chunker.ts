@@ -1,8 +1,8 @@
-import { audiobooks } from "@audiobook/db/src/db/schema/audiobook.js";
-import { eq } from "@audiobook/db/src/index.js";
-import { getDb } from "@audiobook/db/src/index.js";
-import { storage } from "../storage/storage.js";
-import { assets } from "@audiobook/db/src/db/schema/schema.js";
+import { audiobooks } from "@audiobook/db/src/schema/audiobook";
+import { eq } from "@audiobook/db/src/index";
+import { getDb } from "@audiobook/db/src/index";
+import { storage } from "../storage/storage";
+import { assets } from "@audiobook/db/src/schema/schema";
 
 export interface ChunkingJobData {
   audiobookId: string;

@@ -1,14 +1,8 @@
-// import { db } from "@audiobook/db/src/index.js";
-// import { chapters, audiobooks } from "@audiobook/db/src/db/schema/schema.js";
-// import { eq } from "drizzle-orm";
-// import type { TaggedSegment } from "../db/schema.js";
-// import { tagSpeakersAndEmotions } from "../services/llm.js";
-
-import { OpenAI } from "openai/client.js";
+import { OpenAI } from "openai/client";
 import { addTags } from "../services/llm";
 import { eq, getDb } from "@audiobook/db/src";
 import { storage } from "../storage/storage";
-import { assets, audiobooks } from "@audiobook/db/src/db/schema/schema";
+import { assets, audiobooks } from "@audiobook/db/src/schema/schema";
 
 export interface LLMTagJobData {
   audiobookId: string;
@@ -190,53 +184,3 @@ export async function handleTaggingQueue(
     }
   }
 }
-
-// export function startLLMTagWorker(): void {
-//   boss.work<LLMTagJobData>(
-//     QUEUES.LLM_TAG,
-//     { teamSize: 3, teamConcurrency: 2 },
-//     async ([job]) => {
-//       const { audiobookId, chapterId, chapterIndex } = job.data;
-//       console.log(
-//         `[llm-tag] Job ${job.id} — book ${audiobookId} chapter ${chapterIndex}`,
-//       );
-
-//       // ── Fetch chapter ─────────────────────────────────────────────────────
-//       const [chapter] = await db
-//         .select()
-//         .from(chapters)
-//         .where(eq(chapters.id, chapterId));
-
-//       if (!chapter) throw new Error(`Chapter ${chapterId} not found`);
-
-//       // ── LLM Tag ───────────────────────────────────────────────────────────
-//       const taggedSegments = await tagSpeakersAndEmotions(
-//         chapter.rawText,
-//         chapterIndex,
-//       );
-
-//       console.log(
-//         `[llm-tag] Chapter ${chapterIndex}: ${taggedSegments.length} segments tagged`,
-//       );
-
-//       // ── Persist segments ──────────────────────────────────────────────────
-//       await db
-//         .update(chapters)
-//         .set({ taggedSegments })
-//         .where(eq(chapters.id, chapterId));
-
-//       // ── Enqueue voice mapping ─────────────────────────────────────────────
-//       // Collect unique speakers across the chapter
-//       const uniqueSpeakers = [...new Set(taggedSegments.map((s) => s.speaker))];
-
-//       await enqueue(QUEUES.LLM_VOICE_MAP, {
-//         audiobookId,
-//         chapterId,
-//         chapterIndex,
-//         speakers: uniqueSpeakers,
-//       });
-
-//       console.log(`[llm-tag] Done job ${job.id}`);
-//     },
-//   );
-// }

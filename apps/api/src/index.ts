@@ -1,11 +1,11 @@
 import { Hono } from "hono";
-import { queue } from "./queue.js";
+import { queue } from "./queue";
 import { openAPIRouteHandler } from "hono-openapi";
 import { swaggerUI } from "@hono/swagger-ui";
-import audiobook from "./routes/audiobook.js";
-import upload from "./routes/upload.js";
-import { getDb } from "@audiobook/db/src/index.js";
-import { storage } from "./storage/storage.js";
+import audiobook from "./routes/audiobook";
+import upload from "./routes/upload";
+import { getDb } from "@audiobook/db/src/index";
+import { storage } from "./storage/storage";
 
 type Env = {
   Bindings: Cloudflare.Env;

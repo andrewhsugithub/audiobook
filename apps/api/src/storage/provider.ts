@@ -15,7 +15,7 @@ import {
   type PresignedUrlResponse,
   type MultipartPart,
   StorageObjectPayload,
-} from "./interface.js";
+} from "./interface";
 
 export class S3CompatibleStorageProvider implements StorageProvider {
   private client: S3Client;

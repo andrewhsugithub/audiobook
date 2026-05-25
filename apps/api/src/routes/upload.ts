@@ -1,9 +1,9 @@
 import { Hono } from "hono";
 import { validator as sValidator, resolver, describeRoute } from "hono-openapi";
-import { storage } from "../storage/storage.js";
-import { assets, audiobooks } from "@audiobook/db/src/db/schema/schema.js";
-import { getDb } from "@audiobook/db/src/index.js";
-import { eq } from "@audiobook/db/src/index.js";
+import { storage } from "../storage/storage";
+import { assets, audiobooks } from "@audiobook/db/src/schema/schema";
+import { getDb } from "@audiobook/db/src/index";
+import { eq } from "@audiobook/db/src/index";
 
 type Env = {
   Bindings: Cloudflare.Env;
