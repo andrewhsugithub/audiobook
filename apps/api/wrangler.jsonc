@@ -118,7 +118,7 @@
   "hyperdrive": [
     {
       "binding": "HYPERDRIVE",
-      "id": "5d4da2fd38a441409bccfda07a1f8e66",
+      "id": "HYPERDRIVE_ID",
     },
   ],
   // "observability": {
