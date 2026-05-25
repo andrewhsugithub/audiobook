@@ -4,6 +4,8 @@ import { openAPIRouteHandler } from "hono-openapi";
 import { swaggerUI } from "@hono/swagger-ui";
 import audiobook from "./routes/audiobook.js";
 import upload from "./routes/upload.js";
+import { getDb } from "@audiobook/db/src/index.js";
+import { storage } from "./storage/storage.js";
 
 type Env = {
   Bindings: Cloudflare.Env;
@@ -13,6 +15,29 @@ const app = new Hono<Env>();
 
 app.get("/", (c) => {
   return c.text("Hello Hono!");
+});
+
+app.get("/test_get_wav", async (c) => {
+  const db = getDb(c.env.HYPERDRIVE.connectionString);
+
+  const file = await db.query.assets.findFirst({
+    where: (assets, { eq }) => eq(assets.mimeType, "audio/wav"),
+  });
+
+  if (!file) {
+    return c.json({ error: "File not found or not a valid wav." }, 404);
+  }
+
+  const store = storage.getInstance(c.env);
+
+  const filePayload = await store.getObject(file.bucketName, file.s3Key);
+
+  if (!filePayload) {
+    return c.json({ error: "S3 object not found" }, 404);
+  }
+
+  c.header("Content-Type", "audio/wav");
+  return c.body(filePayload.stream);
 });
 
 app.get(
