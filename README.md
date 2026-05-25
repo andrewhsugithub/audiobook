@@ -58,12 +58,18 @@ uv run uvicorn server:app --port 7777
 ```bash
 cd packages/db
 npx drizzle-kit push
+pnpm seed
+
+# or in root
+pnpm db:push
+pnpm db:seed
 ```
 
 6. Create the Cloudflare Hyperdrive KV namespace and update the `.env.local` with the connection string:
 
 ```bash
 cd apps/api
+npx wrangler login
 npx wrangler hyperdrive create hyperdrive --connection-string=<your-db-connection-string> --env-file ../../.env.local
 ```
 
@@ -88,9 +94,12 @@ Copy the user id and put it in the request body when testing the API routes.
 
 ```bash
 cd apps/api
-npx wrangler login
 pnpm cf-typegen
 pnpm dev
+
+# or in root
+pnpm api:typegen
+pnpm api:dev
 ```
 
 9. Test with curl or any API testing tool:

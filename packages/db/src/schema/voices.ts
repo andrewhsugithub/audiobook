@@ -36,6 +36,7 @@ export const voices = pgTable(
     name: varchar("name", { length: 255 }).notNull(),
     gender: varchar("gender", { length: 50 }),
     language: varchar("language", { length: 50 }),
+    country: varchar("country", { length: 50 }),
     description: text("description"),
 
     provider: providerEnum("provider").notNull(),
