@@ -63,10 +63,11 @@ npx drizzle-kit push
 6. Create the Cloudflare Hyperdrive KV namespace and update the `.env.local` with the connection string:
 
 ```bash
-npx wrangler hyperdrive create hyperdrive --connection-string=<your-connection-string> --env-file ../../.env.local
+cd apps/api
+npx wrangler hyperdrive create hyperdrive --connection-string=<your-db-connection-string> --env-file ../../.env.local
 ```
 
-paste your connection string in the `CLOUDFLARE_HYPERDRIVE_LOCAL_CONNECTION_STRING_HYPERDRIVE` variable in the `.env.local` file
+paste your db connection string in the `CLOUDFLARE_HYPERDRIVE_LOCAL_CONNECTION_STRING_HYPERDRIVE` variable in the `.env.local` file
 and paste the id in `apps/api/wrangler.jsonc`
 
 ```json
@@ -87,6 +88,7 @@ Copy the user id and put it in the request body when testing the API routes.
 
 ```bash
 cd apps/api
+npx wrangler login
 pnpm cf-typegen
 pnpm dev
 ```
