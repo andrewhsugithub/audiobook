@@ -100,7 +100,6 @@ curl -X POST http://localhost:8787/upload \
   -H "Content-Type: application/json" \
   -d '{
     "userId": <USER_ID_FROM_DB>,
-    "bookId": "b1111111-2222-3333-4444-555555555555",
     "title": "My Test Local Story",
     "text": "Chapter 1. It was a dark and stormy night. The audio engine started running smoothly."
   }'

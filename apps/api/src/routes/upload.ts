@@ -17,28 +17,35 @@ app.post("/", async (c) => {
   const db = getDb(c.env.HYPERDRIVE.connectionString);
 
   const body = await c.req.json();
-  const { fileName, userId, bookId, text, title, fileSizeBytes } = body;
+  const { fileName, userId, text, title, fileSizeBytes } = body;
   const bucketName = c.env.RAW_BUCKET_NAME;
 
   // fallback if frontend
-  const bookTitle = title || fileName || `Audiobook-${bookId || "Generated"}`;
+  const bookTitle = title || fileName || `Audiobook-Generated`;
   const sizeBytes =
     fileSizeBytes || (text ? new TextEncoder().encode(text).length : 0);
 
   if (text && typeof text === "string") {
     console.log(
-      `[upload] Direct text submission received for book ${bookId}. Bypassing multipart.`,
+      `[upload] Direct text submission received for book upload. Bypassing multipart.`,
     );
 
     const fileName = crypto.randomUUID().slice(0, 8) + ".txt"; // generate random file name to avoid collisions
-    const textFileKey = `raw-uploads/${userId}/${bookId}/${fileName}`;
 
-    await db.insert(audiobooks).values({
-      id: bookId,
-      userId,
-      title: bookTitle,
-      status: "finished_upload",
-    });
+    const [{ id: bookId }] = await db
+      .insert(audiobooks)
+      .values({
+        userId,
+        title: bookTitle,
+        status: "finished_upload",
+      })
+      .returning({ id: audiobooks.id });
+
+    console.log(
+      `[upload] Created audiobook record with ID: ${bookId} for direct text upload.`,
+    );
+
+    const textFileKey = `raw-uploads/${userId}/${bookId}/${fileName}`;
 
     await db.insert(assets).values({
       audiobookId: bookId,
@@ -60,6 +67,7 @@ app.post("/", async (c) => {
     });
 
     return c.json({
+      bookId,
       status: "completed",
       strategy: "direct-write",
       fileKey: textFileKey,
@@ -74,23 +82,25 @@ app.post("/", async (c) => {
     );
   }
 
-  const rawUploadKey = `raw-uploads/${userId}/${bookId}/${fileName}`;
   const mimeType = fileName.endsWith(".pdf")
     ? "application/pdf"
     : "application/octet-stream"; // Adjust dynamically based on extension if needed
 
+  const [{ id: bookId }] = await db
+    .insert(audiobooks)
+    .values({
+      userId,
+      title: bookTitle,
+      status: "initiated",
+    })
+    .returning({ id: audiobooks.id });
+
+  const rawUploadKey = `raw-uploads/${userId}/${bookId}/${fileName}`;
   const uploadId = await bucket.initiateMultipartUpload(
     bucketName,
     rawUploadKey,
     mimeType,
   );
-
-  await db.insert(audiobooks).values({
-    id: bookId,
-    userId,
-    title: bookTitle,
-    status: "initiated",
-  });
 
   await db.insert(assets).values({
     audiobookId: bookId,
@@ -105,6 +115,7 @@ app.post("/", async (c) => {
   });
 
   return c.json({
+    bookId,
     status: "initialized",
     strategy: "multipart",
     uploadId,
