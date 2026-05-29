@@ -90,4 +90,4 @@ export const segments = pgTable(
       table.hlsSequenceNumber,
     ),
   ],
-);
+).enableRLS();

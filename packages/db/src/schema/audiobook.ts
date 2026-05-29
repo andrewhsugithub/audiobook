@@ -22,14 +22,15 @@ export const audiobookStatusEnum = pgEnum("audiobook_status", [
   "finished_upload", // S3 has successfully assembled the raw text/pdf chunks
   "parsing", // Worker is extracting text and metadata from the raw file
   "finished_parsing",
-  "chunking", // worker breaking parsed text into sentences and segments
-  "finished_chunking",
-  "tagging", // worker tagging sentences
-  "finished_tagging",
-  "mapping_voices", // LLM mapping characters to default voices
-  "finished_mapping_voices",
-  "synthesizing", // TTS processing engine converting text to audio
-  "finished_synthesizing",
+  "processing",
+  // "chunking", // worker breaking parsed text into sentences and segments
+  // "finished_chunking",
+  // "tagging", // worker tagging sentences
+  // "finished_tagging",
+  // "mapping_voices", // LLM mapping characters to default voices
+  // "finished_mapping_voices",
+  // "synthesizing", // TTS processing engine converting text to audio
+  // "finished_synthesizing",
   "completed", // Fully processed and ready for streaming
   "failed", // Something in the pipeline broke
 ]);
@@ -73,4 +74,4 @@ export const audiobooks = pgTable(
     index("audiobooks_user_idx").on(table.userId),
     index("audiobooks_status_idx").on(table.status),
   ],
-);
+).enableRLS();

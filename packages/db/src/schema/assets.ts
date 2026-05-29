@@ -56,4 +56,4 @@ export const assets = pgTable(
     index("assets_type_idx").on(table.type),
     index("assets_audiobook_type_idx").on(table.audiobookId, table.type), // maybe don't need?
   ],
-);
+).enableRLS();

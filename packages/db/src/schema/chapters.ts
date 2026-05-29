@@ -51,4 +51,4 @@ export const chapters = pgTable(
       table.sequenceNumber,
     ),
   ],
-);
+).enableRLS();

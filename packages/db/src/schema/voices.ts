@@ -69,4 +69,4 @@ export const voices = pgTable(
       t.externalVoiceId,
     ),
   ],
-);
+).enableRLS();
