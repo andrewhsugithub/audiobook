@@ -162,7 +162,11 @@ export async function handleTaggingQueue(
 
       await db
         .update(audiobooks)
-        .set({ status: "failed", updatedAt: new Date() })
+        .set({
+          status: "failed",
+          errorMessage: `Tagging Stage Failure: ${String(error)}`,
+          updatedAt: new Date(),
+        })
         .where(eq(audiobooks.id, audiobookId));
 
       // message.retry();

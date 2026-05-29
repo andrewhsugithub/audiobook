@@ -182,7 +182,11 @@ export async function handleTTSQueue(
 
       await db
         .update(audiobooks)
-        .set({ status: "failed", updatedAt: new Date() })
+        .set({
+          status: "failed",
+          errorMessage: `TTS Stage Failure: ${String(error)}`,
+          updatedAt: new Date(),
+        })
         .where(eq(audiobooks.id, audiobookId));
 
       // message.retry();
