@@ -47,6 +47,7 @@ export const voices = pgTable(
     externalVoiceId: varchar("external_voice_id", { length: 500 }).notNull(),
 
     // Optional: local path key used if running local files
+    voiceBucketName: varchar("voice_bucket_name", { length: 255 }),
     voiceFileKey: varchar("voice_file_key", { length: 500 }),
     // Optional: URL for previewing the voice, especially useful for third-party voices
     previewFileUrl: text("preview_file_url"),

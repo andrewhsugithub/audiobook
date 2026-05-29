@@ -34,14 +34,16 @@ export const segments = pgTable(
     audiobookId: uuid("audiobook_id")
       .references(() => audiobooks.id, { onDelete: "cascade" })
       .notNull(),
-    // Global sequence across the ENTIRE book for HLS manifest generation.
-    hlsSequenceNumber: integer("hls_sequence_number").notNull(),
+
+    // to track the order of segments for stitching
+    chunkIdx: integer("chunk_idx").notNull(),
+    segmentIdx: integer("segment_idx").notNull(),
 
     content: text("content").notNull(), // currently this is the whole sentence, maybe in the future we can omit the speaker and emotion tags
     rawSpeakerTag: varchar("raw_speaker_tag", { length: 50 }),
     emotionTag: varchar("emotion_tag", { length: 50 }),
 
-    voiceId: uuid("voice_id").references(() => voices.id, {
+    assignedVoiceId: uuid("assigned_voice_id").references(() => voices.id, {
       onDelete: "set null",
     }), // If a voice profile is deleted, keep the sentence record intact
 
@@ -64,11 +66,12 @@ export const segments = pgTable(
     // index("segments_chapter_idx").on(table.chapterId),
     index("segments_audiobook_idx").on(table.audiobookId),
     // index("segments_status_idx").on(table.status),
-    index("segments_hls_seq_idx").on(
+    index("segments_seq_idx").on(
       table.audiobookId,
-      table.hlsSequenceNumber,
+      table.chunkIdx,
+      table.segmentIdx,
     ),
-    index("segments_voice_idx").on(table.voiceId),
+    index("segments_voice_idx").on(table.assignedVoiceId),
 
     // processing query: "give me all pending segments for this book"
     // index("segments_audiobook_status_idx").on(table.audiobookId, table.status),
@@ -84,10 +87,11 @@ export const segments = pgTable(
     //   table.chapterId,
     //   table.sequenceNumber,
     // ),
-    // prevent duplicate HLS sequence numbers within same book (HLS spec requires unique #EXTINF ordering in playlist)
-    unique("segments_book_hls_sequence_unique").on(
+
+    unique("segments_book_seq_unique").on(
       table.audiobookId,
-      table.hlsSequenceNumber,
+      table.chunkIdx,
+      table.segmentIdx,
     ),
   ],
 ).enableRLS();

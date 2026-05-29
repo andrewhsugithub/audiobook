@@ -1,13 +1,12 @@
-import { eq, getDb } from "@audiobook/db/src";
+import { eq, getDb, sql } from "@audiobook/db/src";
 import { storage } from "../storage/storage";
-import { assets, audiobooks, segments } from "@audiobook/db/src/schema/schema";
-
-export interface TTSJobData {
-  audiobookId: string;
-  segmentId: string;
-  // voiceId: string;
-  hlsSequenceNumber: number;
-}
+import {
+  assets,
+  audiobooks,
+  segments,
+  voices,
+} from "@audiobook/db/src/schema/schema";
+import type { TTSJobData } from "../types/jobs";
 
 export async function handleTTSQueue(
   batch: MessageBatch<TTSJobData>,
@@ -21,41 +20,74 @@ export async function handleTTSQueue(
   const bucketName = env.MEDIA_BUCKET_NAME;
   const bucket = storage.getInstance(env);
   for (const message of batch.messages) {
-    const { audiobookId, segmentId, hlsSequenceNumber } = message.body;
+    const { audiobookId, segmentId, chunkIdx, segmentIdx } = message.body;
 
     console.log(
       `[tts queue] Processing segment ${segmentId} for book ${audiobookId} (Message: ${message.id})`,
     );
 
-    if (!audiobookId || !segmentId || hlsSequenceNumber === undefined) {
+    if (
+      !audiobookId ||
+      !segmentId ||
+      chunkIdx === undefined ||
+      segmentIdx === undefined
+    ) {
       console.error(`[tts queue] Invalid message body format.`, message.body);
       message.ack(); // Drop badly formatted messages
       continue;
     }
 
     try {
-      await db
-        .update(audiobooks)
-        .set({ status: "synthesizing", updatedAt: new Date() })
-        .where(eq(audiobooks.id, audiobookId));
-
-      const [content, emotionTag, rawSpeakerTag] = await db
-        .select()
+      const [result] = await db
+        .select({
+          // Segment columns
+          content: segments.content,
+          emotionTag: segments.emotionTag,
+          rawSpeakerTag: segments.rawSpeakerTag,
+          assignedVoiceId: segments.assignedVoiceId,
+          // Voice columns
+          voiceBucketName: voices.voiceBucketName,
+          voiceFileKey: voices.voiceFileKey,
+          externalVoiceId: voices.externalVoiceId,
+          providerMetadata: voices.providerMetadata,
+        })
         .from(segments)
-        .where(eq(segments.id, segmentId))
-        .then((res) => [
-          res[0]?.content,
-          res[0]?.emotionTag,
-          res[0]?.rawSpeakerTag,
-        ]);
+        .leftJoin(voices, eq(segments.assignedVoiceId, voices.id))
+        .where(eq(segments.id, segmentId));
 
-      if (!content) {
-        throw new Error(`Segment not found in DB: ${segmentId}`);
+      if (!result) {
+        throw new Error(
+          `[tts queue] Segment not found in database: ${segmentId}`,
+        );
+      }
+      if (!result.content) {
+        throw new Error(
+          `[tts queue] Segment ${segmentId} contains no text content to synthesize.`,
+        );
       }
 
-      //! should get parameters from voice db table by voiceId once we have voice mapping working instead of hardcoding
+      const {
+        content,
+        voiceBucketName,
+        voiceFileKey,
+        externalVoiceId,
+        providerMetadata,
+      } = result;
+
+      const voiceId = externalVoiceId ?? "a167e0f3-df7e-4d52-a9c3-f949145efdab";
+      const metadata = providerMetadata as any;
+      if (voiceBucketName && voiceFileKey) {
+        console.log(
+          `[tts queue] 📥 Using custom voice clone asset from storage: ${voiceBucketName}/${voiceFileKey}`,
+        );
+      } else {
+        console.log(
+          `[tts queue] Using voice ID ${voiceId} and provider metadata ${JSON.stringify(metadata)} for segment ${segmentId}.`,
+        );
+      }
+
       //! note that tts outputs .wav -> stitch everything together into one .wav -> use ffmpeg to convert into hls
-      // should build the content according to voiceId table, some may need [emotion]content, some may need [speaker][emotion]content, etc. and pass the appropriate voice parameters to the TTS API
+      // should build the content according to voiceId table, some may need [emotion]content, some may need [speaker][emotion]content or even ssml tags, etc. and pass the appropriate voice parameters to the TTS API
       // https://docs.cartesia.ai/api-reference/tts/bytes
       const response = await fetch(env.TTS_URL, {
         method: "POST",
@@ -69,29 +101,29 @@ export async function handleTTSQueue(
           transcript: content, // content without speaker/emotion tags
           voice: {
             mode: "id",
-            id: "a167e0f3-df7e-4d52-a9c3-f949145efdab", // Default voice; replace dynamically later
+            id: externalVoiceId!,
           },
-          output_format: {
+          output_format: metadata?.output_format || {
             container: "wav",
             encoding: "pcm_s16le",
             sample_rate: 44100,
           },
           language: "en",
-          generation_config: {
+          generation_config: metadata?.generation_config || {
             speed: 1,
             volume: 1,
-            emotion: emotionTag,
+            // emotion: emotionTag, // use ssml tags instead
           },
         }),
       });
       console.log(
-        `[tts queue] Received response from Cartesia API sonic 3.5 for segment ${segmentId} audiobook ${audiobookId}, status: ${response.status} response: ${response}`,
+        `[tts queue] Received response from Cartesia API sonic 3.5 for segment ${segmentId} chunk ${chunkIdx} segment ${segmentIdx} audiobook ${audiobookId}, status: ${response.status} response: ${response}`,
       );
 
       if (!response.ok) {
         const errorText = await response.text();
         throw new Error(
-          `Cartesia API Error (${response.status}): ${errorText} for segment ${segmentId} audiobook ${audiobookId}`,
+          `Cartesia API Error (${response.status}): ${errorText} for segment ${segmentId} chunk ${chunkIdx} segment ${segmentIdx} audiobook ${audiobookId}`,
         );
       }
 
@@ -103,13 +135,13 @@ export async function handleTTSQueue(
       }
       const audioUint8 = new Uint8Array(audioBuffer);
 
-      const audioS3Key = `audiobooks/${audiobookId}/segments/seq_${hlsSequenceNumber}.wav`;
+      const audioS3Key = `audiobooks/${audiobookId}/segments/seg_${chunkIdx}_${segmentIdx}.wav`;
 
       await bucket.putObject(bucketName, audioS3Key, audioUint8, "audio/wav");
 
       await db.insert(assets).values({
         audiobookId,
-        type: "raw_input",
+        type: "tts_output",
         bucketName: bucketName,
         s3Key: audioS3Key,
         mimeType: "audio/wav",
@@ -124,11 +156,25 @@ export async function handleTTSQueue(
         })
         .where(eq(segments.id, segmentId));
 
+      const [audiobook] = await db.transaction(async (tx) => {
+        return await tx
+          .update(audiobooks)
+          .set({ processedSegments: sql`${audiobooks.processedSegments} + 1` })
+          .where(eq(audiobooks.id, audiobookId))
+          .returning();
+      });
+
       console.log(
-        `[tts queue] ✓ Segment ${hlsSequenceNumber} parsed to WAV & saved successfully for audiobook ${audiobookId}. S3 Key: ${audioS3Key} size: ${audioBuffer.byteLength} bytes.`,
+        `[tts queue] ✓ Segment ${chunkIdx}_${segmentIdx} with id: ${segmentId} parsed to WAV & saved successfully for audiobook ${audiobookId}. S3 Key: ${audioS3Key} size: ${audioBuffer.byteLength} bytes.`,
       );
 
-      // send to hls worker for stitching once we have all segments ready
+      // send to hls worker
+      if (audiobook.processedSegments === audiobook.totalSegments) {
+        console.log(
+          `[tts queue] All segments for audiobook ${audiobookId} processed. Sending message to HLS queue.`,
+        );
+        await env.HLS_QUEUE.send({ audiobookId });
+      }
 
       message.ack();
     } catch (error) {
@@ -139,7 +185,7 @@ export async function handleTTSQueue(
         .set({ status: "failed", updatedAt: new Date() })
         .where(eq(audiobooks.id, audiobookId));
 
-      message.retry();
+      // message.retry();
     }
   }
 }

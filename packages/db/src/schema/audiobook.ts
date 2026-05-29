@@ -20,9 +20,9 @@ export const audiobookVisibilityEnum = pgEnum("audiobook_visibility", [
 export const audiobookStatusEnum = pgEnum("audiobook_status", [
   "initiated", // Multipart upload started, urls handed to client
   "finished_upload", // S3 has successfully assembled the raw text/pdf chunks
-  "parsing", // Worker is extracting text and metadata from the raw file
-  "finished_parsing",
   "processing",
+  // "parsing", // Worker is extracting text and metadata from the raw file
+  // "finished_parsing",
   // "chunking", // worker breaking parsed text into sentences and segments
   // "finished_chunking",
   // "tagging", // worker tagging sentences
@@ -55,6 +55,9 @@ export const audiobooks = pgTable(
     // chunks folder, for tracking
     chunksBucketName: varchar("chunks_bucket_name", { length: 255 }),
     chunksS3KeyPrefix: text("chunks_s3_key_prefix"),
+    // segments folder, for tracking
+    segmentsBucketName: varchar("segments_bucket_name", { length: 255 }),
+    segmentsS3KeyPrefix: text("segments_s3_key_prefix"),
 
     // keep this since hls worker may need to constantly query the length of the book to calculate offsets for streaming
     totalDurationSeconds: real("total_duration_seconds").default(0),

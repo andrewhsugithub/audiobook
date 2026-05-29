@@ -212,6 +212,9 @@ importers:
       '@audiobook/db':
         specifier: workspace:*
         version: link:../../packages/db
+      '@audiobook/shared-libs':
+        specifier: workspace:*
+        version: link:../../packages/shared-libs
       '@aws-sdk/client-s3':
         specifier: ^3.1033.0
         version: 3.1052.0

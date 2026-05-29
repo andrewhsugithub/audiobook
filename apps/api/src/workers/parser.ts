@@ -3,13 +3,7 @@ import { assets, audiobooks } from "@audiobook/db/src/schema/schema";
 import { eq } from "@audiobook/db/src/index";
 import { storage } from "../storage/storage";
 import { getDb } from "@audiobook/db/src/index";
-
-export interface ParserJobData {
-  audiobookId: string;
-  userId: string;
-  s3FileKey: string;
-  fileName: string;
-}
+import type { ChunkingJobData, ParserJobData } from "../types/jobs";
 
 export async function handleParserQueue(
   batch: MessageBatch<ParserJobData>,
@@ -32,7 +26,7 @@ export async function handleParserQueue(
     try {
       await db
         .update(audiobooks)
-        .set({ status: "parsing", updatedAt: new Date() })
+        .set({ status: "processing", updatedAt: new Date() })
         .where(eq(audiobooks.id, audiobookId));
 
       const storageObject = await bucket.getObject(rawBucketName, s3FileKey);
@@ -89,7 +83,6 @@ export async function handleParserQueue(
       await db
         .update(audiobooks)
         .set({
-          status: "finished_parsing",
           updatedAt: new Date(),
           totalCharactersParsed: extractedTextContent.length,
         })
@@ -109,11 +102,12 @@ export async function handleParserQueue(
         `[parser-queue] Raw strings extracted and saved to cache path: ${parsedS3TextKey}`,
       );
 
-      await env.CHUNKING_QUEUE.send({
+      const data: ChunkingJobData = {
         audiobookId,
         parsedS3TextKey,
         totalCharacterCount: extractedTextContent.length,
-      });
+      };
+      await env.CHUNKING_QUEUE.send(data);
 
       message.ack();
       console.log(
@@ -134,7 +128,7 @@ export async function handleParserQueue(
         })
         .where(eq(audiobooks.id, audiobookId));
 
-      message.retry();
+      // message.retry();
     }
   });
 

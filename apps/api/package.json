@@ -8,6 +8,7 @@
   },
   "dependencies": {
     "@audiobook/db": "workspace:*",
+    "@audiobook/shared-libs": "workspace:*",
     "@aws-sdk/client-s3": "^3.1033.0",
     "@aws-sdk/s3-request-presigner": "^3.1033.0",
     "@hono/standard-validator": "^0.2.2",

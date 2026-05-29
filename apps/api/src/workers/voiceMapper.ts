@@ -2,20 +2,12 @@
 //! Across playlist updates: gaps/jumps are allowed.
 //! Inside one playlist: segment sequence numbers are implicitly consecutive from the starting MEDIA-SEQUENCE.
 
-import { getDb, eq } from "@audiobook/db/src/index";
+import { getDb, eq, sql } from "@audiobook/db/src/index";
 import { segments } from "@audiobook/db/src/schema/segments";
-import { providerEnum, voices } from "@audiobook/db/src/schema/voices";
+import { voices } from "@audiobook/db/src/schema/voices";
 import { audiobooks } from "@audiobook/db/src/schema/schema";
 import { storage } from "../storage/storage";
-
-export interface VoiceMappingJobData {
-  audiobookId: string;
-  taggedChunkNumber: number;
-  taggedS3Key: string;
-}
-
-type Provider = (typeof providerEnum.enumValues)[number];
-// const PROVIDER: Provider = "@cf/deepgram/aura-2-en"; //? maybe can be passed in the message body instead of hardcoding
+import type { TTSJobData, VoiceMappingJobData } from "../types/jobs";
 
 export async function handleVoiceMappingQueue(
   batch: MessageBatch<VoiceMappingJobData>,
@@ -30,13 +22,13 @@ export async function handleVoiceMappingQueue(
   const bucket = storage.getInstance(env);
 
   for (const message of batch.messages) {
-    const { audiobookId, taggedChunkNumber, taggedS3Key } = message.body;
+    const { audiobookId, chunkIdx, taggedS3Key } = message.body;
 
     console.log(
-      `[voice-mapping queue] Processing tagged chunk ${taggedChunkNumber} for book ${audiobookId} (Message: ${message.id})`,
+      `[voice-mapping queue] Processing tagged chunk ${chunkIdx} for book ${audiobookId} (Message: ${message.id})`,
     );
 
-    if (!audiobookId || !taggedS3Key || taggedChunkNumber === undefined) {
+    if (!audiobookId || !taggedS3Key || chunkIdx === undefined) {
       console.error(
         `[voice-mapping queue] Invalid message body format.`,
         message.body,
@@ -50,64 +42,60 @@ export async function handleVoiceMappingQueue(
       if (!textObject) {
         throw new Error(`Tagged chunk file not found in S3: ${taggedS3Key}`);
       }
+
       const rawText = await textObject.transformToString();
-
-      await db
-        .update(audiobooks)
-        .set({ status: "mapping_voices", updatedAt: new Date() })
-        .where(eq(audiobooks.id, audiobookId));
-
       const lines = rawText.split("\n");
-      let localIndex = 0;
 
       //! don't load whole file into memory, stream line by line
-      for (const line of lines) {
-        if (!line.trim()) continue;
+      for (let i = 0; i < lines.length; i++) {
+        const line = lines[i];
+        if (!line.trim()) continue; // skip empty lines
 
         // extract speaker label
         const speakerMatch = line.match(/^\[(.*?)\]/);
         const emotionMatch = line.match(/^\[(?:.*?)\]\[(.*?)\]/); // matches the second tag if it exists
         const content = line.replace(/^(?:\[(?:.*?)\]){1,2}\s*/, ""); // remove one or two tags at the start of the line
 
-        const hlsSequenceNumber = taggedChunkNumber * 10_000 + localIndex; //! find a better way to handle this
+        // const assignedVoiceId = "5ce3eabe-dcec-41a1-a394-79d1b30b74ad"; // default voice id
+        const assignedVoiceId = "0b0db781-c8ab-4fb7-8885-d1dff2c98b66";
 
         const result = await db
           .insert(segments)
           .values({
             audiobookId,
-            hlsSequenceNumber,
+            chunkIdx,
+            segmentIdx: i,
             content: content, //? maybe put into S3
             rawSpeakerTag: speakerMatch ? speakerMatch[1] : "Unknown",
-            emotionTag: emotionMatch ? emotionMatch[1] : "Neutral",
-            // TODO:
-            // voiceId: assignedVoiceId,
+            // emotionTag: emotionMatch ? emotionMatch[1] : "Neutral",
+            assignedVoiceId,
           })
           .returning({ id: segments.id });
 
         const segmentId = result[0].id;
 
-        console.log(
-          `[voice-mapping queue] Mapped segment ${content} ${segmentId} for tagged chunk ${taggedChunkNumber} audiobook ${audiobookId}.`,
-        );
-
-        await env.TTS_QUEUE.send({
-          audiobookId,
-          segmentId,
-          content,
-          //   voiceId: assignedVoiceId,
-          hlsSequenceNumber,
+        await db.transaction(async (tx) => {
+          await tx
+            .update(audiobooks)
+            .set({ totalSegments: sql`${audiobooks.totalSegments} + 1` })
+            .where(eq(audiobooks.id, audiobookId));
         });
 
-        localIndex++;
+        console.log(
+          `[voice-mapping queue] Mapped segment ${content} id: ${segmentId} idx: ${i} for tagged chunk ${chunkIdx} audiobook ${audiobookId}.`,
+        );
+
+        const data: TTSJobData = {
+          audiobookId,
+          segmentId,
+          chunkIdx,
+          segmentIdx: i,
+        };
+        await env.TTS_QUEUE.send(data);
       }
 
-      await db
-        .update(audiobooks)
-        .set({ status: "finished_mapping_voices", updatedAt: new Date() })
-        .where(eq(audiobooks.id, audiobookId));
-
       console.log(
-        `[voice-mapping queue] ✓ Mapped ${localIndex} segments for tagged chunk ${taggedChunkNumber} audiobook ${audiobookId} successfully.`,
+        `[voice-mapping queue] ✓ Mapped ${lines.length} segments for tagged chunk ${chunkIdx} audiobook ${audiobookId} successfully.`,
       );
       message.ack();
     } catch (error) {
@@ -115,7 +103,7 @@ export async function handleVoiceMappingQueue(
         `[voice-mapping queue] ✗ Message ${message.id} failed:`,
         error,
       );
-      message.retry();
+      // message.retry();
     }
   }
 }

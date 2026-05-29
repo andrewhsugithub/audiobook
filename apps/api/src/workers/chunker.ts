@@ -3,12 +3,7 @@ import { eq } from "@audiobook/db/src/index";
 import { getDb } from "@audiobook/db/src/index";
 import { storage } from "../storage/storage";
 import { assets } from "@audiobook/db/src/schema/schema";
-
-export interface ChunkingJobData {
-  audiobookId: string;
-  parsedS3TextKey: string;
-  totalCharacterCount: number;
-}
+import type { LLMTagJobData, ChunkingJobData } from "../types/jobs";
 
 // set maybe smaller to leave room for system prompt and ouput tokens
 const MAX_CHUNK_LENGTH = 2048;
@@ -88,12 +83,14 @@ export async function handleChunkingQueue(
     console.log(`[chunking-queue] Chunking book: ${audiobookId}`);
 
     try {
+      //? maybe put this in initial audiobook creation instead of updating here
       await db
         .update(audiobooks)
         .set({
-          status: "chunking",
           chunksBucketName: bucketName,
           chunksS3KeyPrefix: `audiobooks/${audiobookId}/chunks/`,
+          segmentsBucketName: bucketName,
+          segmentsS3KeyPrefix: `audiobooks/${audiobookId}/segments/`,
           updatedAt: new Date(),
         })
         .where(eq(audiobooks.id, audiobookId));
@@ -114,8 +111,7 @@ export async function handleChunkingQueue(
         const textContent = chunks[i];
 
         // Save the chunk payload to S3 to bypass Queue limits (max 128kb string size)
-        const paddedIndex = String(i + 1).padStart(4, "0"); // start from 1 e.g. 0001
-        const chunkS3Key = `audiobooks/${audiobookId}/chunks/chunk_${paddedIndex}.txt`; //? maybe don't need to save?
+        const chunkS3Key = `audiobooks/${audiobookId}/chunks/chunk_${i + 1}.txt`; //? maybe don't need to save?
 
         await bucket.putObject(
           bucketName,
@@ -129,24 +125,23 @@ export async function handleChunkingQueue(
           type: "chunk_text",
           bucketName,
           s3Key: chunkS3Key,
-          fileName: `chunk_${paddedIndex}.txt`,
+          fileName: `chunk_${i + 1}.txt`,
           sequenceNumber: i + 1,
           mimeType: "text/plain",
           sizeBytes: new TextEncoder().encode(textContent).length,
         });
 
-        await env.TAGGING_QUEUE.send({
+        const data: LLMTagJobData = {
           audiobookId,
-          chunkNumber: i + 1, // for calculating sequence number in hls downstream, note that hls starts from 0
-          chunkS3Key: chunkS3Key,
-        });
+          chunkIdx: i + 1, // for ordering
+          chunkS3Key,
+        };
+        await env.TAGGING_QUEUE.send(data);
       }
 
-      //! should track per chunk basis otherwise this only updates for one chunk what if other chunks failed
       await db
         .update(audiobooks)
         .set({
-          status: "finished_chunking",
           totalChunks: chunks.length,
           updatedAt: new Date(),
         })
@@ -169,7 +164,7 @@ export async function handleChunkingQueue(
           updatedAt: new Date(),
         })
         .where(eq(audiobooks.id, audiobookId));
-      message.retry();
+      // message.retry();
     }
   });
 

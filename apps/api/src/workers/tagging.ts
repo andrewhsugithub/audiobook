@@ -3,12 +3,7 @@ import { addTags } from "../services/llm";
 import { eq, getDb } from "@audiobook/db/src";
 import { storage } from "../storage/storage";
 import { assets, audiobooks } from "@audiobook/db/src/schema/schema";
-
-export interface LLMTagJobData {
-  audiobookId: string;
-  chunkNumber: number;
-  chunkS3Key: string;
-}
+import type { LLMTagJobData, VoiceMappingJobData } from "../types/jobs";
 
 //? maybe can be passed in the message body instead of hardcoding
 const MODEL_ID = "@cf/google/gemma-4-26b-a4b-it";
@@ -32,15 +27,7 @@ To prevent tagging errors, you MUST process emotions strictly like a computer co
 The <emotion value="..."> tag only accepts exact strings. You are strictly restricted to the following VALID_EMOTION_ENUM array ONLY:
 
 VALID_EMOTION_ENUM = [
-  "neutral", "angry", "excited", "content", "sad", "scared", "happy", "enthusiastic", 
-  "elated", "euphoric", "triumphant", "amazed", "surprised", "flirtatious", "joking/comedic", 
-  "curious", "peaceful", "serene", "calm", "grateful", "affectionate", "trust", 
-  "sympathetic", "anticipation", "mysterious", "mad", "outraged", "frustrated", 
-  "agitated", "threatened", "disgusted", "contempt", "envious", "sarcastic", "ironic", 
-  "dejected", "melancholic", "disappointed", "hurt", "guilty", "bored", "tired", 
-  "rejected", "nostalgic", "wistful", "apologetic", "hesitant", "insecure", "confused", 
-  "resigned", "anxious", "panicked", "alarmed", "proud", "confident", "distant", 
-  "skeptical", "contemplative", "determined"
+  "neutral", "happy", "excited", "enthusiastic", "elated", "euphoric", "triumphant", "amazed", "surprised", "flirtatious", "curious", "content", "peaceful", "serene", "calm", "grateful", "affectionate", "trust", "sympathetic", "anticipation", "mysterious", "angry", "mad", "outraged", "frustrated", "agitated", "threatened", "disgusted", "contempt", "envious", "sarcastic", "ironic", "sad", "dejected", "melancholic", "disappointed", "hurt", "guilty", "bored", "tired", "rejected", "nostalgic", "wistful", "apologetic", "hesitant", "insecure", "confused", "resigned", "anxious", "panicked", "alarmed", "scared", "proud", "confident", "distant", "skeptical", "contemplative", "determined"
 ]
 
 4. TAG ASSIGNMENT STRATEGY:
@@ -70,8 +57,8 @@ To his surprise, Ron stifled a snigger. "Well — it's Filch," he said.
 [Narrator] <emotion value="neutral"/> Something in Ron’s voice made Harry ask,
 [Harry] <emotion value="anxious"/> "You do <emotion value="scared"/> believe me, don’t you?"
 [Narrator] <emotion value="neutral"/> To his surprise, Ron stifled a snigger.
-[Ron] <emotion value="joking/comedic"/> "Well — it's Filch,"
-[Narrator] <emotion value="neutral"/> he said.\`;tion] he said.`;
+[Ron] <emotion value="sarcastic"/> "Well — it's Filch,"
+[Narrator] <emotion value="neutral"/> he said.`;
 
 export async function handleTaggingQueue(
   batch: MessageBatch<LLMTagJobData>,
@@ -92,10 +79,10 @@ export async function handleTaggingQueue(
     //   body: message.body,
     // });
 
-    const { audiobookId, chunkNumber, chunkS3Key } = message.body;
+    const { audiobookId, chunkIdx, chunkS3Key } = message.body;
 
     console.log(
-      `[tagging queue] Processing chunk ${chunkNumber} for book ${audiobookId} (Message: ${message.id})`,
+      `[tagging queue] Processing chunk ${chunkIdx} for book ${audiobookId} (Message: ${message.id})`,
     );
 
     if (!audiobookId || !chunkS3Key) {
@@ -108,11 +95,6 @@ export async function handleTaggingQueue(
     }
 
     try {
-      await db
-        .update(audiobooks)
-        .set({ status: "tagging", updatedAt: new Date() })
-        .where(eq(audiobooks.id, audiobookId));
-
       const textObject = await bucket.getObject(bucketName, chunkS3Key);
       if (!textObject) {
         throw new Error(`Chunk file not found in S3: ${chunkS3Key}`);
@@ -139,12 +121,11 @@ export async function handleTaggingQueue(
 
       if (!taggedContent) {
         throw new Error(
-          `Failed to extract tagged content from LLM response for book ${audiobookId}, chunk ${chunkNumber} (Message: ${message.id}) error: ${JSON.stringify(response)}`,
+          `Failed to extract tagged content from LLM response for book ${audiobookId}, chunk ${chunkIdx} (Message: ${message.id}) error: ${JSON.stringify(response)}`,
         );
       }
 
-      const paddedIndex = String(chunkNumber).padStart(4, "0");
-      const taggedS3Key = `audiobooks/${audiobookId}/chunks/tagged_chunk_${paddedIndex}.txt`;
+      const taggedS3Key = `audiobooks/${audiobookId}/chunks/tagged_chunk_${chunkIdx}.txt`;
 
       await bucket.putObject(
         bucketName,
@@ -153,32 +134,27 @@ export async function handleTaggingQueue(
         "text/plain",
       );
 
-      //! should track per chunk basis otherwise this only updates for one chunk what if other chunks failed
-      await db
-        .update(audiobooks)
-        .set({ status: "finished_tagging", updatedAt: new Date() })
-        .where(eq(audiobooks.id, audiobookId));
-
       await db.insert(assets).values({
         audiobookId,
         type: "tagged_text",
         bucketName,
         s3Key: taggedS3Key,
-        fileName: `tagged_chunk_${paddedIndex}.txt`,
-        sequenceNumber: chunkNumber,
+        fileName: `tagged_chunk_${chunkIdx}.txt`,
+        sequenceNumber: chunkIdx,
         mimeType: "text/plain",
         sizeBytes: new TextEncoder().encode(taggedContent).length,
       });
 
       console.log(
-        `[tagging queue] ✓ Audiobook ${audiobookId} Chunk ${chunkNumber} tagged & saved successfully.`,
+        `[tagging queue] ✓ Audiobook ${audiobookId} Chunk ${chunkIdx} tagged & saved successfully.`,
       );
 
-      await env.VOICE_MAPPING_QUEUE.send({
+      const data: VoiceMappingJobData = {
         audiobookId,
-        taggedChunkNumber: chunkNumber,
+        chunkIdx,
         taggedS3Key,
-      });
+      };
+      await env.VOICE_MAPPING_QUEUE.send(data);
 
       message.ack();
     } catch (error) {
@@ -189,7 +165,7 @@ export async function handleTaggingQueue(
         .set({ status: "failed", updatedAt: new Date() })
         .where(eq(audiobooks.id, audiobookId));
 
-      message.retry();
+      // message.retry();
     }
   }
 }

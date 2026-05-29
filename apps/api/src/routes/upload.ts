@@ -4,6 +4,7 @@ import { storage } from "../storage/storage";
 import { assets, audiobooks } from "@audiobook/db/src/schema/schema";
 import { getDb } from "@audiobook/db/src/index";
 import { eq } from "@audiobook/db/src/index";
+import type { ParserJobData } from "../types/jobs";
 
 type Env = {
   Bindings: Cloudflare.Env;
@@ -59,12 +60,13 @@ app.post("/", async (c) => {
 
     await bucket.putObject(bucketName, textFileKey, text, "text/plain");
 
-    await c.env.PARSER_QUEUE.send({
+    const data: ParserJobData = {
       audiobookId: bookId,
       userId,
       s3FileKey: textFileKey,
       fileName,
-    });
+    };
+    await c.env.PARSER_QUEUE.send(data);
 
     return c.json({
       bookId,
