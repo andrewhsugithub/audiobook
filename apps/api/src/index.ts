@@ -5,7 +5,7 @@ import { swaggerUI } from "@hono/swagger-ui";
 import audiobook from "./routes/audiobook";
 import upload from "./routes/upload";
 import { getDb } from "@audiobook/db/src/index";
-import { storage } from "./storage/storage";
+import { storage } from "@audiobook/storage/src/storage.cf";
 
 type Env = {
   Bindings: Cloudflare.Env;

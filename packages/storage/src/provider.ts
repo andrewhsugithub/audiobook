@@ -10,12 +10,12 @@ import {
   AbortMultipartUploadCommand,
 } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
-import {
-  type StorageProvider,
-  type PresignedUrlResponse,
-  type MultipartPart,
+import type {
+  StorageProvider,
+  PresignedUrlResponse,
+  MultipartPart,
   StorageObjectPayload,
-} from "./interface";
+} from "./interface.js";
 
 export class S3CompatibleStorageProvider implements StorageProvider {
   private client: S3Client;

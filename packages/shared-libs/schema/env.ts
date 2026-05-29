@@ -23,6 +23,7 @@ export const envSchema = z
     TTS_URL: z.url(),
     TTS_API_KEY: z.string().optional(),
 
+    CLOUDFLARE_ACCOUNT_ID: z.string().optional(),
     LLM_URL: z.url().optional(),
     LLM_API_TOKEN: z.string().optional(),
 

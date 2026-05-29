@@ -1,7 +1,7 @@
 import { audiobooks } from "@audiobook/db/src/schema/audiobook";
 import { eq } from "@audiobook/db/src/index";
 import { getDb } from "@audiobook/db/src/index";
-import { storage } from "../storage/storage";
+import { storage } from "@audiobook/storage/src/storage.cf";
 import { assets } from "@audiobook/db/src/schema/schema";
 import type { LLMTagJobData, ChunkingJobData } from "../types/jobs";
 

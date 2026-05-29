@@ -215,12 +215,9 @@ importers:
       '@audiobook/shared-libs':
         specifier: workspace:*
         version: link:../../packages/shared-libs
-      '@aws-sdk/client-s3':
-        specifier: ^3.1033.0
-        version: 3.1052.0
-      '@aws-sdk/s3-request-presigner':
-        specifier: ^3.1033.0
-        version: 3.1052.0
+      '@audiobook/storage':
+        specifier: workspace:*
+        version: link:../../packages/storage
       '@hono/standard-validator':
         specifier: ^0.2.2
         version: 0.2.2(@standard-schema/spec@1.1.0)(hono@4.12.22)
@@ -369,6 +366,22 @@ importers:
       '@types/node':
         specifier: ^25.6.0
         version: 25.6.0
+
+  packages/storage:
+    dependencies:
+      '@audiobook/shared-libs':
+        specifier: workspace:*
+        version: link:../shared-libs
+      '@aws-sdk/client-s3':
+        specifier: ^3.1052.0
+        version: 3.1052.0
+      '@aws-sdk/s3-request-presigner':
+        specifier: ^3.1052.0
+        version: 3.1052.0
+    devDependencies:
+      '@types/node':
+        specifier: ^25.9.1
+        version: 25.9.1
 
 packages:
 

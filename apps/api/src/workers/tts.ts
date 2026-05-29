@@ -1,5 +1,5 @@
 import { eq, getDb, sql } from "@audiobook/db/src";
-import { storage } from "../storage/storage";
+import { storage } from "@audiobook/storage/src/storage.cf";
 import {
   assets,
   audiobooks,

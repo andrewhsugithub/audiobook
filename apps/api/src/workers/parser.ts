@@ -1,7 +1,7 @@
 import { extractText, getDocumentProxy } from "unpdf";
 import { assets, audiobooks } from "@audiobook/db/src/schema/schema";
 import { eq } from "@audiobook/db/src/index";
-import { storage } from "../storage/storage";
+import { storage } from "@audiobook/storage/src/storage.cf";
 import { getDb } from "@audiobook/db/src/index";
 import type { ChunkingJobData, ParserJobData } from "../types/jobs";
 

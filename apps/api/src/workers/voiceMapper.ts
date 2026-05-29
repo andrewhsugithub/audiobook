@@ -6,7 +6,7 @@ import { getDb, eq, sql } from "@audiobook/db/src/index";
 import { segments } from "@audiobook/db/src/schema/segments";
 import { voices } from "@audiobook/db/src/schema/voices";
 import { audiobooks } from "@audiobook/db/src/schema/schema";
-import { storage } from "../storage/storage";
+import { storage } from "@audiobook/storage/src/storage.cf";
 import type { TTSJobData, VoiceMappingJobData } from "../types/jobs";
 
 export async function handleVoiceMappingQueue(

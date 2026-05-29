@@ -1,7 +1,7 @@
 import { OpenAI } from "openai/client";
 import { addTags } from "../services/llm";
 import { eq, getDb } from "@audiobook/db/src";
-import { storage } from "../storage/storage";
+import { storage } from "@audiobook/storage/src/storage.cf";
 import { assets, audiobooks } from "@audiobook/db/src/schema/schema";
 import type { LLMTagJobData, VoiceMappingJobData } from "../types/jobs";
 
