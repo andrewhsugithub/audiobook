@@ -23,10 +23,10 @@
 
 ## Setup Instructions
 
-1. Copy the example environment file first, paste your credentials in `.env.local`:
+1. Copy the example environment file first, paste your credentials in `.env`:
 
 ```bash
-cp .env.example .env.local
+cp .env.example .env
 ```
 
 2. Install packages in the project root:

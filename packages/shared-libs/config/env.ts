@@ -7,10 +7,7 @@ import { z } from "zod";
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
-//! Development-only code for loading environment variables from .env.local and validating them against our schema. In production, we should rely on the environment variables being set properly and skip the file loading step.
-if (process.env.NODE_ENV !== "production") {
-  loadEnvFile(path.join(__dirname, "../../../.env.local")); // Load environment variables from .env.local
-}
+loadEnvFile(path.join(__dirname, "../../../.env"));
 
 const parsedEnv = envSchema.safeParse(process.env);
 if (!parsedEnv.success) {

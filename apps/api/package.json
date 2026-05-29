@@ -2,9 +2,9 @@
   "name": "@audiobook/api",
   "type": "module",
   "scripts": {
-    "dev": "wrangler dev --env-file ../../.env.local",
+    "dev": "wrangler dev --env-file ../../.env",
     "deploy": "wrangler deploy --minify",
-    "cf-typegen": "wrangler types --env-interface CloudflareBindings  --env-file ../../.env.local"
+    "cf-typegen": "wrangler types --env-interface CloudflareBindings  --env-file ../../.env"
   },
   "dependencies": {
     "@audiobook/storage": "workspace:*",
