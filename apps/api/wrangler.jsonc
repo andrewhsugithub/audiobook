@@ -88,30 +88,32 @@
     "consumers": [
       {
         "queue": "audiobook-parser",
-        "max_batch_size": 10,
-        "max_batch_timeout": 5,
+        "max_batch_size": 5,
+        "max_batch_timeout": 3,
       },
       {
         "queue": "audiobook-chunking",
-        "max_batch_size": 10,
-        "max_batch_timeout": 5,
+        "max_batch_size": 5,
+        "max_batch_timeout": 3,
       },
       {
         "queue": "audiobook-tagging",
-        "max_batch_size": 1,
+        "max_batch_size": 5,
+        "max_batch_timeout": 3,
       },
       {
         "queue": "audiobook-voice-mapping",
-        "max_batch_size": 1,
+        "max_batch_size": 5,
+        "max_batch_timeout": 3,
       },
       {
         "queue": "audiobook-tts",
         "max_batch_size": 5,
+        "max_batch_timeout": 3,
       },
       {
         "queue": "audiobook-hls",
         "max_batch_size": 3,
-        "max_batch_timeout": 5,
         "visibility_timeout_ms": 30000, // 30 seconds
       },
     ],

@@ -56,6 +56,7 @@ async function triggerJob(
       Accept: "application/vnd.github+json",
       Authorization: `Bearer ${env.GITHUB_TOKEN}`,
       "X-GitHub-Api-Version": "2026-03-10",
+      "User-Agent": "Cloudflare HLS Queue",
     },
     body: JSON.stringify({
       event_type: "trigger-hls",
