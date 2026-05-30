@@ -65,16 +65,16 @@ pnpm db:push
 pnpm db:seed
 ```
 
-6. Create the Cloudflare Hyperdrive KV namespace and update the `.env.local` with the connection string:
+6. Create the Cloudflare Hyperdrive KV namespace and update the `.env` with the connection string:
 
 ```bash
 cd apps/api
 npx wrangler login
-npx wrangler hyperdrive create hyperdrive --connection-string=<your-db-connection-string> --env-file ../../.env.local
+npx wrangler hyperdrive create hyperdrive --connection-string=<your-db-connection-string> --env-file ../../.env
 ```
 
-paste your db connection string in the `CLOUDFLARE_HYPERDRIVE_LOCAL_CONNECTION_STRING_HYPERDRIVE` variable in the `.env.local` file
-and paste the id in `apps/api/wrangler.jsonc` and `.env.local`'s `HYPERDRIVE_ID` variable:
+paste your db connection string in the `CLOUDFLARE_HYPERDRIVE_LOCAL_CONNECTION_STRING_HYPERDRIVE` variable in the `.env` file
+and paste the id in `apps/api/wrangler.jsonc` and `.env`'s `HYPERDRIVE_ID` variable:
 
 ```json
 "hyperdrive": [
@@ -108,10 +108,12 @@ pnpm api:dev
 curl -X POST http://localhost:8787/upload \
   -H "Content-Type: application/json" \
   -d '{
-    "userId": <USER_ID_FROM_DB>,
+    "userId": "3b23d30c-f359-42bd-0656-eaf4561a9cd0",
     "title": "My Test Local Story",
-    "text": "Chapter 1. It was a dark and stormy night. The audio engine started running smoothly."
+    "text": "\"I just won the lottery!\" exclaimed Sarah, her eyes wide with disbelief as she held the winning ticket in her trembling hands."
   }'
+  "text": "Today is a gloomy night, rain patters against the window as I sit by the fireplace, sipping on a warm cup of tea. The flickering flames cast dancing shadows on the walls, creating a cozy ambiance that contrasts with the storm raging outside. Suddenly, a loud crash of thunder makes me jump, and I cannot help but feel a sense of unease creeping in."
+  "userId": "2f5363b9-8fc3-482a-da6b-2d605fb782f1",
 ```
 
 <details>
