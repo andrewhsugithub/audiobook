@@ -13,9 +13,17 @@
   act repository_dispatch -e ./apps/hls/test-event.json --secret-file .env --container-architecture linux/amd64 -W .github/workflows/hls.yml --bind=false
   ```
 
-  > must choose medium or large image:
-  > if use medium: must install ffmpeg byself in workflow
-  > if use large: ffmpeg is preinstalled
+  > must choose medium or large image
+
+```bash
+curl -X POST https://api.github.com/repos/andrewhsugithub/audiobook/dispatches \
+  -H "Accept: application/vnd.github.v3+json" \
+  -H "Authorization: Bearer <GITHUB_PERSONAL_ACCESS_TOKEN>" \
+  -H "X-Github-Api-Version: 2026-03-10" \
+  -H "User-Agent: Cloudflare HLS Queue" \
+  -d '{"event_type":"trigger-hls","client_payload":{"audiobookId":"99015780-b9cd-4206-ab58-85b866a26f12","outputBucket":"my-audiobook-media-dev","outputPrefix":"audiobooks/99015780-b9cd-4206-ab58-85b866a26f12/hls/"}}'
+
+```
 
 - test with docker:
   ```bash
