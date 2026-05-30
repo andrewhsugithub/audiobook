@@ -113,8 +113,8 @@
       },
       {
         "queue": "audiobook-hls",
-        "max_batch_size": 3,
-        "visibility_timeout_ms": 30000, // 30 seconds
+        "max_batch_size": 5,
+        "max_batch_timeout": 3,
       },
     ],
   },
