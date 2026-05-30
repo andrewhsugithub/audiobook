@@ -1,0 +1,38 @@
+FROM node:24-alpine AS builder
+
+RUN npm install -g pnpm
+
+WORKDIR /app
+
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
+COPY tsconfig.base.json ./
+COPY packages/db/package.json ./packages/db/
+COPY packages/storage/package.json ./packages/storage/
+COPY packages/shared-libs/package.json  ./packages/shared-libs/
+COPY apps/hls/package.json ./apps/hls/
+
+RUN pnpm install --frozen-lockfile
+
+COPY packages/db/ ./packages/db/
+COPY packages/storage/ ./packages/storage/
+COPY packages/shared-libs/ ./packages/shared-libs/
+COPY apps/hls/ ./apps/hls/
+
+RUN pnpm --filter @audiobook/hls build
+
+FROM node:24-alpine AS runner
+
+RUN apk add --no-cache ffmpeg
+
+# Verify codec
+RUN ffmpeg -codecs 2>/dev/null | grep -q aac && echo "✅ AAC available"
+
+WORKDIR /app
+
+COPY --from=builder /app/apps/hls/dist/ ./
+
+RUN addgroup -S hls && adduser -S hls -G hls
+RUN chown -R hls:hls /app
+USER hls
+
+CMD ["node", "index.mjs"]
