@@ -31,12 +31,14 @@ interface FFmpegOptions {
   bitrate?: string; // default "192k"
   // HLS segmenting options
   segmentDuration?: number; // default 4 seconds
+  padWidth: number; // for zero-padding segment filenames, e.g. 5 for seg_00001.m4s
 }
 
 export async function runFFmpeg(opts: FFmpegOptions): Promise<void> {
   const {
     inputDir,
     outputDir,
+    padWidth,
     sampleRate = 48000,
     channels = 2,
     bitrate = "192k",
@@ -62,7 +64,7 @@ export async function runFFmpeg(opts: FFmpegOptions): Promise<void> {
   console.log(`📝 inputs.txt: ${wavFiles.length} entries`);
 
   const streamM3u8 = join(outputDir, "stream.m3u8");
-  const segPattern = join(outputDir, "seg_%05d.m4s");
+  const segPattern = join(outputDir, `seg_%0${padWidth}d.m4s`); // e.g. seg_00001.m4s
 
   const args: string[] = [
     // Never prompt — we are non-interactive in Docker

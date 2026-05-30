@@ -81,13 +81,16 @@ async function main(): Promise<void> {
       segmentIdx: s.segmentIdx,
     }));
 
+    const padWidth = String(orderedWavKeys.length).length; // for zero-padding filenames like seg_00001.wav
+
     await downloadSegments({
       store,
       orderedWavKeys,
       inputDir,
+      padWidth,
     });
 
-    await runFFmpeg({ inputDir, outputDir });
+    await runFFmpeg({ inputDir, outputDir, padWidth });
 
     await uploadHLSFiles({
       store,

@@ -13,10 +13,11 @@ interface DownloadOptions {
   }>;
   inputDir: string;
   concurrency?: number;
+  padWidth: number; // for zero-padding segment filenames, e.g. 5 for seg_00001.wav
 }
 
 export async function downloadSegments(opts: DownloadOptions): Promise<void> {
-  const { store, orderedWavKeys, inputDir, concurrency = 20 } = opts;
+  const { store, orderedWavKeys, inputDir, padWidth, concurrency = 20 } = opts;
   const total = orderedWavKeys.length;
 
   console.log(
@@ -24,17 +25,16 @@ export async function downloadSegments(opts: DownloadOptions): Promise<void> {
   );
 
   const startMs = Date.now();
-  const width = orderedWavKeys.length.toString().length; // for zero-padding filenames like seg_00001.wav
   let completed = 0;
 
-  for (let i = 0; i < orderedWavKeys.length; i += concurrency) {
+  for (let i = 0; i < total; i += concurrency) {
     const batch = orderedWavKeys.slice(i, i + concurrency);
 
     await Promise.all(
       batch.map(async (seg, batchIdx) => {
         const globalIdx = i + batchIdx;
 
-        const localFilename = `seg_${String(globalIdx).padStart(width, "0")}.wav`; // e.g. seg_00001.wav for readdir() sorting
+        const localFilename = `seg_${String(globalIdx).padStart(padWidth)}.wav`; // e.g. seg_00001.wav for readdir() sorting
         const localPath = join(inputDir, localFilename);
 
         const payload = await store.getObject(seg.bucket, seg.key);
