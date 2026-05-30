@@ -133,6 +133,18 @@ export async function handleTTSQueue(
           `Received 0 bytes from Cartesia API for segment ${segmentId} audiobook ${audiobookId}`,
         );
       }
+
+      const exactDurationSeconds = calculateDurationSeconds(
+        audioBuffer.byteLength,
+        metadata?.output_format?.sample_rate || 44100,
+        metadata?.output_format?.encoding === "pcm_s16le" ? 2 : 2, // pcm_s16le is 16 bits = 2 bytes
+        1,
+      );
+
+      console.log(
+        `[tts queue] Segment ${segmentId} exact duration: ${exactDurationSeconds}s`,
+      );
+
       const audioUint8 = new Uint8Array(audioBuffer);
 
       const audioS3Key = `audiobooks/${audiobookId}/segments/seg_${chunkIdx}_${segmentIdx}.wav`;
@@ -153,13 +165,17 @@ export async function handleTTSQueue(
         .set({
           audioSegmentS3Key: audioS3Key,
           bucketName: bucketName,
+          durationSeconds: exactDurationSeconds,
         })
         .where(eq(segments.id, segmentId));
 
       const [audiobook] = await db.transaction(async (tx) => {
         return await tx
           .update(audiobooks)
-          .set({ processedSegments: sql`${audiobooks.processedSegments} + 1` })
+          .set({
+            processedSegments: sql`${audiobooks.processedSegments} + 1`,
+            totalDurationSeconds: sql`${audiobooks.totalDurationSeconds} + ${exactDurationSeconds}`,
+          })
           .where(eq(audiobooks.id, audiobookId))
           .returning();
       });
@@ -193,4 +209,16 @@ export async function handleTTSQueue(
       // message.retry();
     }
   }
+}
+
+function calculateDurationSeconds(
+  byteLength: number,
+  sampleRate: number,
+  bytesPerSample: number,
+  channels: number,
+): number {
+  // Standard WAV files have a 44-byte metadata header.
+  const WAV_HEADER_SIZE_BYTES = 44;
+  const rawAudioBytes = Math.max(0, byteLength - WAV_HEADER_SIZE_BYTES); // Subtract WAV header
+  return rawAudioBytes / (sampleRate * bytesPerSample * channels);
 }

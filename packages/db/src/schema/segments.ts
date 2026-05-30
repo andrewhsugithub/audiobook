@@ -60,6 +60,8 @@ export const segments = pgTable(
 
     // status: segmentStatusEnum("status").default("pending").notNull(),
 
+    durationSeconds: real("duration_seconds"),
+
     createdAt: timestamp("created_at").defaultNow().notNull(),
   },
   (table) => [
