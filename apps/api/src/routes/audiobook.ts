@@ -17,8 +17,8 @@ const app = new Hono<Env>();
 
 const ALLOWED_ORIGINS = ["http://localhost:5173"];
 
-// const TOKEN_TTL = 3600; // 1 hour sliding window
-const TOKEN_TTL = 10; // 1 hour sliding window
+const TOKEN_TTL = 3600; // 1 hour sliding window
+// const TOKEN_TTL = 10; // for testing use
 const MAX_SESSION_TTL = 21600; // 6 hours absolute cutoff cap (Replay protection)
 const COOKIE_NAME = "hls_session";
 
