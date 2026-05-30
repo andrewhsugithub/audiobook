@@ -7,7 +7,21 @@ import { z } from "zod";
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
-loadEnvFile(path.join(__dirname, "../../../.env"));
+//! Development-only code for loading environment variables from .env and validating them against our schema. In production, we should rely on the environment variables being set properly and skip the file loading step.
+if (process.env.NODE_ENV !== "production") {
+  try {
+    loadEnvFile(path.join(__dirname, "../../../.env")); // Load environment variables from .env
+  } catch (err) {
+    // If the error is just a missing file, log it safely and continue execution
+    if (err && (err as any).code === "ENOENT") {
+      console.log(
+        "ℹ️ No local .env file found. Falling back to system environment memory.",
+      );
+    } else {
+      throw err; // Rethrow if it's a different, unexpected file error
+    }
+  }
+}
 
 const parsedEnv = envSchema.safeParse(process.env);
 if (!parsedEnv.success) {

@@ -100,6 +100,7 @@ async function main(): Promise<void> {
       .update(audiobooks)
       .set({
         status: "completed",
+        errorMessage: null,
         updatedAt: new Date(),
       })
       .where(eq(audiobooks.id, audiobookId));

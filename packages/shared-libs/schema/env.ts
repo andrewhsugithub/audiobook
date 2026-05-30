@@ -20,7 +20,7 @@ export const envSchema = z
     S3_ACCESS_KEY_ID: z.string().optional(),
     S3_SECRET_ACCESS_KEY: z.string().optional(),
 
-    TTS_URL: z.url(),
+    TTS_URL: z.url().optional(),
     TTS_API_KEY: z.string().optional(),
 
     CLOUDFLARE_ACCOUNT_ID: z.string().optional(),
@@ -36,8 +36,12 @@ export const envSchema = z
     ]),
   })
   .superRefine((data, ctx) => {
-    // if database url isn't local, then CLOUDFLARE_HYPERDRIVE_LOCAL_CONNECTION_STRING_HYPERDRIVE must match DATABASE_URL
-    if (data.DATABASE_URL && !isLocalUrl(data.DATABASE_URL)) {
+    // if database url isn't local and NODE_ENV is not production, then CLOUDFLARE_HYPERDRIVE_LOCAL_CONNECTION_STRING_HYPERDRIVE must match DATABASE_URL
+    if (
+      data.DATABASE_URL &&
+      !isLocalUrl(data.DATABASE_URL) &&
+      process.env.NODE_ENV !== "production"
+    ) {
       if (
         data.CLOUDFLARE_HYPERDRIVE_LOCAL_CONNECTION_STRING_HYPERDRIVE !==
         data.DATABASE_URL
