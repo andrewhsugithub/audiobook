@@ -2,10 +2,7 @@ import { eq } from "@audiobook/db/src/index";
 import { getDb } from "@audiobook/db/src";
 import { audiobooks } from "@audiobook/db/src/schema/schema";
 import type { HLSJobData } from "@audiobook/hls/src/index";
-
-export interface HLSQueueJobData {
-  audiobookId: string;
-}
+import { HLSQueueJobData } from "../types/jobs";
 
 export async function handleHLSQueue(
   batch: MessageBatch<HLSQueueJobData>,
@@ -17,7 +14,7 @@ export async function handleHLSQueue(
     const { audiobookId } = message.body;
 
     try {
-      console.log(`[hls queue] Building job for ${audiobookId}`);
+      console.log(`[hls queue] Building job for audiobook ${audiobookId}`);
 
       const hlsJob: HLSJobData = {
         audiobookId,
@@ -25,19 +22,9 @@ export async function handleHLSQueue(
         outputPrefix: `audiobooks/${audiobookId}/hls/`,
       };
 
-      const jobRunId = await triggerRailwayJob(hlsJob, env);
+      await triggerJob(hlsJob, env);
 
-      await db
-        .update(audiobooks)
-        .set({
-          hlsJobId: jobRunId,
-          updatedAt: new Date(),
-        })
-        .where(eq(audiobooks.id, audiobookId));
-
-      console.log(
-        `[hls queue] ✓ Railway job ${jobRunId} triggered for ${audiobookId}`,
-      );
+      console.log(`[hls queue] ✓ Job triggered for ${audiobookId}`);
 
       message.ack();
     } catch (error) {
@@ -52,86 +39,41 @@ export async function handleHLSQueue(
         })
         .where(eq(audiobooks.id, audiobookId));
 
-      message.retry();
+      // message.retry();
     }
   }
 }
 
-// ─── Railway GraphQL trigger ───────────────────────────────────────────────────
-
-interface RailwayJobRunResponse {
-  data: {
-    jobRun: {
-      id: string;
-    };
-  };
-  errors?: Array<{ message: string }>;
-}
-
-async function triggerRailwayJob(
-  job: HLSJobData,
+async function triggerJob(
+  jobPayload: HLSJobData,
   env: Cloudflare.Env,
-): Promise<string> {
-  const RAILWAY_API = "https://backboard.railway.app/graphql/v2";
+): Promise<void> {
+  const GITHUB_API = `https://api.github.com/repos/${env.GITHUB_OWNER}/${env.GITHUB_REPO}/dispatches`;
 
-  const jobPayload = JSON.stringify(job);
-
-  // Railway jobRun mutation with variable overrides
-  // serviceId = your Railway service ID (the HLS transcoder service)
-  const mutation = `
-    mutation TriggerJobRun($serviceId: String!, $environmentId: String!, $variables: [VariableCollectionInput!]) {
-      jobRun(
-        input: {
-          serviceId: $serviceId
-          environmentId: $environmentId
-          variables: $variables
-        }
-      ) {
-        id
-      }
-    }
-  `;
-
-  const response = await fetch(RAILWAY_API, {
+  const response = await fetch(GITHUB_API, {
     method: "POST",
     headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${env.RAILWAY_API_TOKEN}`,
+      Accept: "application/vnd.github+json",
+      Authorization: `Bearer ${env.GITHUB_TOKEN}`,
+      "X-GitHub-Api-Version": "2026-03-10",
     },
     body: JSON.stringify({
-      query: mutation,
-      variables: {
-        serviceId: env.RAILWAY_SERVICE_ID,
-        environmentId: env.RAILWAY_ENVIRONMENT_ID,
-        // These override env vars for this specific run only
-        variables: [
-          {
-            name: "JOB_PAYLOAD",
-            value: jobPayload,
-          },
-        ],
-      },
+      event_type: "trigger-hls",
+      client_payload: jobPayload,
     }),
   });
 
+  console.log(`[hls queue] GitHub API response status: ${response.status}`);
+
   if (!response.ok) {
     const text = await response.text();
-    throw new Error(`Railway API request failed (${response.status}): ${text}`);
-  }
-
-  const result = (await response.json()) as RailwayJobRunResponse;
-
-  if (result.errors?.length) {
     throw new Error(
-      `Railway GraphQL error: ${result.errors.map((e) => e.message).join(", ")}`,
+      `GitHub Actions dispatch request failed (${response.status}): ${text}`,
     );
   }
 
-  if (!result.data?.jobRun?.id) {
-    throw new Error(
-      `Railway returned no job run ID: ${JSON.stringify(result)}`,
-    );
-  }
-
-  return result.data.jobRun.id;
+  // GitHub responds with a clean "242 Accepted" code if everything went through perfectly.
+  // We return immediately, allowing the consumer loop to complete its confirmation phase safely.
+  //? maybe return a tracking sting
+  return;
 }

@@ -29,3 +29,7 @@ export interface ParserJobData {
   s3FileKey: string;
   fileName: string;
 }
+
+export interface HLSQueueJobData {
+  audiobookId: string;
+}

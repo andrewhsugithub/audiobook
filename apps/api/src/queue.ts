@@ -3,6 +3,7 @@ import { handleParserQueue } from "./workers/parser";
 import { handleTaggingQueue } from "./workers/tagging";
 import { handleVoiceMappingQueue } from "./workers/voiceMapper";
 import { handleTTSQueue } from "./workers/tts";
+import { handleHLSQueue } from "./workers/hls";
 
 export async function queue(
   batch: MessageBatch<any>,
@@ -22,6 +23,7 @@ export async function queue(
     "audiobook-tagging": handleTaggingQueue,
     "audiobook-voice-mapping": handleVoiceMappingQueue,
     "audiobook-tts": handleTTSQueue,
+    "audiobook-hls": handleHLSQueue,
   };
 
   const handler = handlers[batch.queue];

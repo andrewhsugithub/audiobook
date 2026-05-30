@@ -61,6 +61,7 @@ export const audiobooks = pgTable(
 
     // keep this since hls worker may need to constantly query the length of the book to calculate offsets for streaming
     totalDurationSeconds: real("total_duration_seconds").default(0),
+    // hlsJobId: varchar("hls_job_id", { length: 255 }), // for tracking which job is processing this book, can be used for debugging and retrying failed jobs
 
     // Tracking & Debugging metrics
     totalCharactersParsed: integer("total_characters_parsed").default(0),

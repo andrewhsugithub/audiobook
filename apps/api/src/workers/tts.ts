@@ -6,7 +6,7 @@ import {
   segments,
   voices,
 } from "@audiobook/db/src/schema/schema";
-import type { TTSJobData } from "../types/jobs";
+import type { HLSQueueJobData, TTSJobData } from "../types/jobs";
 
 export async function handleTTSQueue(
   batch: MessageBatch<TTSJobData>,
@@ -173,7 +173,8 @@ export async function handleTTSQueue(
         console.log(
           `[tts queue] All segments for audiobook ${audiobookId} processed. Sending message to HLS queue.`,
         );
-        await env.HLS_QUEUE.send({ audiobookId });
+        const hlsJobData: HLSQueueJobData = { audiobookId };
+        await env.HLS_QUEUE.send(hlsJobData);
       }
 
       message.ack();
