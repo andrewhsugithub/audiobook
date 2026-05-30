@@ -1,3 +1,10 @@
+export interface RangeResponse {
+  start: number;
+  end: number;
+  total: number;
+  bytes: Uint8Array;
+}
+
 export interface PresignedUrlResponse {
   url: string;
   key: string;
@@ -13,6 +20,7 @@ export interface StorageObjectPayload {
   stream: ReadableStream<Uint8Array>;
   transformToString(): Promise<string>;
   transformToByteArray(): Promise<Uint8Array>;
+  rangeResponse?: RangeResponse; // set when fetched with a Range header
 }
 
 export interface StorageProvider {
@@ -22,6 +30,14 @@ export interface StorageProvider {
     expiresInSeconds?: number,
   ): Promise<PresignedUrlResponse>;
   getObject(bucket: string, key: string): Promise<StorageObjectPayload | null>;
+
+  // Range-aware fetch — for HLS segment seeking
+  getObjectWithRange(
+    bucket: string,
+    key: string,
+    range?: string, // "bytes=0-1023"
+  ): Promise<StorageObjectPayload | null>;
+
   putObject(
     bucket: string,
     key: string,

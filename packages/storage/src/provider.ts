@@ -15,6 +15,7 @@ import type {
   PresignedUrlResponse,
   MultipartPart,
   StorageObjectPayload,
+  RangeResponse,
 } from "./interface.js";
 
 export class S3CompatibleStorageProvider implements StorageProvider {
@@ -85,6 +86,73 @@ export class S3CompatibleStorageProvider implements StorageProvider {
         error.message.includes("DOMParser is not defined")
       ) {
         console.error(`Object not found: s3://${bucket}/${key}`);
+        return null;
+      }
+      throw error;
+    }
+  }
+
+  async getObjectWithRange(
+    bucket: string,
+    key: string,
+    range?: string,
+  ): Promise<StorageObjectPayload | null> {
+    try {
+      const response = await this.client.send(
+        new GetObjectCommand({
+          Bucket: bucket,
+          Key: key,
+          Range: range, // Pass the HTTP Range header directly to S3
+        }),
+      );
+      if (!response.Body) return null;
+
+      let rangeResponse: RangeResponse | undefined;
+
+      // Extract details from Content-Range if available (e.g., "bytes 0-1023/2048")
+      if (response.ContentRange) {
+        const match = response.ContentRange.match(
+          /bytes (\d+)-(\d+)\/(\d+|\*)/,
+        );
+        if (match) {
+          rangeResponse = {
+            start: parseInt(match[1], 10),
+            end: parseInt(match[2], 10),
+            total: match[3] === "*" ? 0 : parseInt(match[3], 10),
+            // We omit the `bytes` array here to avoid buffering entire segments unless necessary,
+            // but satisfying the type requires it. If you need it eagerly evaluated:
+            bytes: new Uint8Array(),
+          };
+
+          // Because AWS streams the response, building the bytes array eagerly on
+          // every fetch defeats the purpose of streams. If your interface strictly
+          // requires `.bytes` inside `RangeResponse`, we wait until required or provide a stub.
+        }
+      }
+
+      return {
+        get stream() {
+          return response.Body!.transformToWebStream();
+        },
+        async transformToString() {
+          return await response.Body!.transformToString();
+        },
+        async transformToByteArray() {
+          const buffer = await response.Body!.transformToByteArray();
+          const bytes = new Uint8Array(buffer);
+          if (rangeResponse) {
+            rangeResponse.bytes = bytes;
+          }
+          return bytes;
+        },
+        rangeResponse,
+      };
+    } catch (error: any) {
+      if (
+        error.name === "NoSuchKey" ||
+        error.$metadata?.httpStatusCode === 404 ||
+        error.message.includes("DOMParser is not defined")
+      ) {
         return null;
       }
       throw error;
@@ -210,6 +278,67 @@ export class R2NativeStorageProvider implements StorageProvider {
     return bucket;
   }
 
+  async getObjectWithRange(
+    bucket: string,
+    key: string,
+    rangeHeader?: string,
+  ): Promise<StorageObjectPayload | null> {
+    const r2 = this.getBucket(bucket);
+
+    // Parse Range header: "bytes=start-end" or "bytes=start-"
+    // R2GetOptions is from @cloudflare/workers-types, typing as Record<string,any> if missing
+    let r2Options: Record<string, any> = {};
+    let parsedRange: { start: number; end?: number } | null = null;
+
+    if (rangeHeader) {
+      const match = rangeHeader.match(/bytes=(\d+)-(\d*)/);
+      if (match) {
+        parsedRange = {
+          start: parseInt(match[1]),
+          end: match[2] ? parseInt(match[2]) : undefined,
+        };
+        r2Options = {
+          range:
+            parsedRange.end !== undefined
+              ? {
+                  offset: parsedRange.start,
+                  length: parsedRange.end - parsedRange.start + 1,
+                }
+              : { offset: parsedRange.start },
+        };
+      }
+    }
+
+    const obj = await r2.get(key, r2Options);
+    if (!obj) return null;
+
+    let rangeResponse: RangeResponse | undefined;
+
+    if (parsedRange && obj.size) {
+      const total = obj.size;
+      const start = parsedRange.start;
+      const end = parsedRange.end ?? total - 1;
+
+      rangeResponse = {
+        start,
+        end,
+        total,
+        bytes: new Uint8Array(), // Placeholder until read, similar to AWS implementation
+      };
+    }
+
+    return {
+      stream: obj.body as ReadableStream<Uint8Array>,
+      transformToString: () => obj.text(),
+      transformToByteArray: async () => {
+        const arr = new Uint8Array(await obj.arrayBuffer());
+        if (rangeResponse) rangeResponse.bytes = arr;
+        return arr;
+      },
+      rangeResponse,
+    };
+  }
+
   async getPresignedDownloadUrl(
     bucket: string,
     key: string,
@@ -229,7 +358,7 @@ export class R2NativeStorageProvider implements StorageProvider {
     bucketName: string,
     key: string,
   ): Promise<StorageObjectPayload | null> {
-    const bucket = this.getBucket(bucketName).key(key);
+    const bucket = this.getBucket(bucketName);
     const r2Object = await bucket.get(key);
 
     if (!r2Object || !r2Object.body) return null;

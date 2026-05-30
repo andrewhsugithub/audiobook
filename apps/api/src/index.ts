@@ -2,10 +2,9 @@ import { Hono } from "hono";
 import { queue } from "./queue";
 import { openAPIRouteHandler } from "hono-openapi";
 import { swaggerUI } from "@hono/swagger-ui";
-import audiobook from "./routes/audiobook";
 import upload from "./routes/upload";
-import { getDb } from "@audiobook/db/src/index";
-import { storage } from "@audiobook/storage/src/storage.cf";
+import { cors } from "hono/cors";
+import audiobook from "./routes/audiobook";
 
 type Env = {
   Bindings: Cloudflare.Env;
@@ -13,31 +12,30 @@ type Env = {
 
 const app = new Hono<Env>();
 
+// ─── CORS ─────────────────────────────────────────────────────────────────────
+
+const ALLOWED_ORIGINS = ["http://localhost:5173"];
+
+// ─── CORS MANAGEMENT (DYNAMIC WHITELIST) ─────────────────────────────────────
+app.use(
+  "/*",
+  cors({
+    origin: (origin) => (ALLOWED_ORIGINS.includes(origin) ? origin : null),
+    allowMethods: ["GET", "OPTIONS", "POST"],
+    allowHeaders: ["Range", "Content-Type", "If-None-Match"],
+    exposeHeaders: [
+      "Content-Length",
+      "Content-Range",
+      "Accept-Ranges",
+      "X-Cache-Status",
+    ],
+    credentials: true,
+    maxAge: 86400, // Cache preflight flags for 24h
+  }),
+);
+
 app.get("/", (c) => {
   return c.text("Hello Hono!");
-});
-
-app.get("/test_get_wav", async (c) => {
-  const db = getDb(c.env.HYPERDRIVE.connectionString);
-
-  const file = await db.query.assets.findFirst({
-    where: (assets, { eq }) => eq(assets.mimeType, "audio/wav"),
-  });
-
-  if (!file) {
-    return c.json({ error: "File not found or not a valid wav." }, 404);
-  }
-
-  const store = storage.getInstance(c.env);
-
-  const filePayload = await store.getObject(file.bucketName, file.s3Key);
-
-  if (!filePayload) {
-    return c.json({ error: "S3 object not found" }, 404);
-  }
-
-  c.header("Content-Type", "audio/wav");
-  return c.body(filePayload.stream);
 });
 
 app.get(
@@ -47,7 +45,7 @@ app.get(
   }),
 );
 
-// app.route("/audiobook", book);
+app.route("/audiobook", audiobook);
 app.route("/upload", upload);
 
 app.get(
@@ -60,6 +58,7 @@ app.get(
         description: "API for greeting users",
       },
     },
+    includeEmptyPaths: true,
   }),
 );
 
