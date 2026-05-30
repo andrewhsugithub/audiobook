@@ -14,14 +14,15 @@ export async function handleHLSQueue(
     const { audiobookId } = message.body;
 
     try {
-      console.log(`[hls queue] Building job for audiobook ${audiobookId}`);
-
       const hlsJob: HLSJobData = {
         audiobookId,
         outputBucket: env.MEDIA_BUCKET_NAME,
         outputPrefix: `audiobooks/${audiobookId}/hls/`,
       };
-
+      console.log(
+        `[hls queue] Triggering job for audiobook ${audiobookId} with payload:`,
+        hlsJob,
+      );
       await triggerJob(hlsJob, env);
 
       console.log(`[hls queue] ✓ Job triggered for ${audiobookId}`);
@@ -44,6 +45,7 @@ export async function handleHLSQueue(
   }
 }
 
+// TODO: refactor to Octokit
 async function triggerJob(
   jobPayload: HLSJobData,
   env: Cloudflare.Env,
@@ -64,7 +66,9 @@ async function triggerJob(
     }),
   });
 
-  console.log(`[hls queue] GitHub API response status: ${response.status}`);
+  console.log(
+    `[hls queue] API response status: ${response.status} for ${jobPayload.audiobookId}`,
+  );
 
   if (!response.ok) {
     const text = await response.text();
@@ -74,7 +78,6 @@ async function triggerJob(
   }
 
   // GitHub responds with a clean "242 Accepted" code if everything went through perfectly.
-  // We return immediately, allowing the consumer loop to complete its confirmation phase safely.
-  //? maybe return a tracking sting
+  //? maybe return a tracking string
   return;
 }
