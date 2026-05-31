@@ -10,6 +10,7 @@ import {
   real,
 } from "drizzle-orm/pg-core";
 import { audiobooks } from "./audiobook.js";
+import { sql } from "drizzle-orm";
 
 export const assetTypeEnum = pgEnum("asset_type", [
   "raw_upload", // The original PDF/TXT uploaded by the user
@@ -49,7 +50,10 @@ export const assets = pgTable(
     sequenceNumber: integer("sequence_number"),
     durationSeconds: real("duration_seconds"),
 
-    createdAt: timestamp("created_at").defaultNow().notNull(),
+    createdAt: timestamp("created_at")
+      .defaultNow()
+      .notNull()
+      .$onUpdate(() => sql`CURRENT_TIMESTAMP`),
   },
   (table) => [
     index("assets_audiobook_idx").on(table.audiobookId),

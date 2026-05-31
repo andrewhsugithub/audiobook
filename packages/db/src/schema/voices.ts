@@ -9,6 +9,7 @@ import {
   unique,
   index,
 } from "drizzle-orm/pg-core";
+import { sql } from "drizzle-orm";
 
 export const providerEnum = pgEnum("voice_provider", [
   // local
@@ -59,7 +60,10 @@ export const voices = pgTable(
     providerMetadata: jsonb("provider_metadata"), //? maybe need another schema for output options like speed, volume, container, encoding, sample_rate, etc. currently just put them in providerMetadata for simplicity, which sets every voice to have the same output config but can be customized per voice by setting different providerMetadata
 
     createdAt: timestamp("created_at").defaultNow().notNull(),
-    updatedAt: timestamp("updated_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at")
+      .defaultNow()
+      .notNull()
+      .$onUpdate(() => sql`CURRENT_TIMESTAMP`),
   },
   (t) => [
     index("voices_provider_idx").on(t.provider),

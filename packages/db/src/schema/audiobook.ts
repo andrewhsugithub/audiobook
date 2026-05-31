@@ -10,6 +10,7 @@ import {
   real,
 } from "drizzle-orm/pg-core";
 import { users } from "./users.js";
+import { sql } from "drizzle-orm";
 
 export const audiobookVisibilityEnum = pgEnum("audiobook_visibility", [
   "public",
@@ -76,7 +77,10 @@ export const audiobooks = pgTable(
     errorMessage: text("error_message"),
 
     createdAt: timestamp("created_at").defaultNow().notNull(),
-    updatedAt: timestamp("updated_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at")
+      .defaultNow()
+      .notNull()
+      .$onUpdate(() => sql`CURRENT_TIMESTAMP`),
   },
   (table) => [
     index("audiobooks_user_idx").on(table.userId),
