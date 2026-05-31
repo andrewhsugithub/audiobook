@@ -19,6 +19,7 @@
     "RAW_BUCKET_NAME": "my-audiobook-raw-uploads-dev",
     "MEDIA_BUCKET_NAME": "my-audiobook-media-dev",
     "PUBLIC_ASSETS_BUCKET_NAME": "my-audiobook-public-dev",
+    "RANDOM_COVER_BASE_URL": "https://picsum.photos/seed/",
   },
   // "kv_namespaces": [
   //   {
