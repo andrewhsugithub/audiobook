@@ -164,6 +164,18 @@ function BookComponent() {
             )}
           </div>
           <div className="mt-6 min-h-[60px] flex flex-col justify-center">
+            {book?.isReady === false &&
+              (book?.status === 'initiated' ? (
+                <div className="text-sm text-red-400 p-3 bg-red-500/10 rounded-lg border border-red-500/20">
+                  ❌ No content is currently available for this audiobook.
+                  <br />
+                  Please provide content to process.
+                </div>
+              ) : (
+                <div className="text-sm text-yellow-400 p-3 bg-yellow-500/10 rounded-lg border border-yellow-500/20">
+                  ⚠️ This audiobook is still being processed. Check back later!
+                </div>
+              ))}
             {isStreamLoading && (
               <div className="text-sm opacity-60 animate-pulse flex items-center gap-2">
                 <span>🔒</span> Establishing secure audio stream connection...
