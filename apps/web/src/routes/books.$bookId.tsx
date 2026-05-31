@@ -4,15 +4,30 @@ import { useEffect, useRef, useState } from 'react'
 import Rating from '../components/Rating'
 import Header from '../components/Header'
 import AudioPlayer from '../components/AudioPlayer'
+import { HlsAudioPlayer } from '../components/HlsAudio'
+import { useHlsStream } from '../hooks/useHlsStream'
 
 export const Route = createFileRoute('/books/$bookId')({
-  component: RouteComponent,
+  component: BookComponent,
 })
 
-function RouteComponent() {
+function BookComponent() {
   const { title } = Route.useSearch() as { title?: string }
   const bookId = Route.useParams().bookId
+
+  const {
+    isLoading: isStreamLoading,
+    isError: isStreamError,
+    error: streamError,
+    isSuccess: isStreamReady,
+  } = useHlsStream(bookId)
+  // const audioURL =
+  //   'https://playertest.longtailvideo.com/adaptive/alt-audio-no-video/angel-one.m3u8'
+  // const audioURL =
+  //   'https://stream.mux.com/BV3YZtogl89mg9VcNBhhnHm02Y34zI1nlMuMQfAbl3dM/highest.mp4'
   // const bookQuery = useBookQuery(bookId)
+
+  const audioURL = `http://localhost:8787/audiobook/${bookId}/master.m3u8`
 
   const fakeBook = {
     id: bookId,
@@ -121,7 +136,22 @@ function RouteComponent() {
               {isInLibrary ? '✓ In My Library' : '+ My Library'}
             </button>
           </div>
-          <AudioPlayer duration={240} initialTime={75} />
+          <div className="mt-6 min-h-[60px] flex flex-col justify-center">
+            {isStreamLoading && (
+              <div className="text-sm opacity-60 animate-pulse">
+                Establishing secure audio stream connection...
+              </div>
+            )}
+
+            {isStreamError && (
+              <div className="text-sm text-red-400 p-3 bg-red-500/10 rounded-lg border border-red-500/20">
+                ⚠️ Secure Stream Error: {streamError.message}
+              </div>
+            )}
+
+            {isStreamReady && <HlsAudioPlayer src={audioURL} />}
+          </div>
+          {/* <AudioPlayer duration={240} initialTime={75} /> */}
           <div
             className="mt-10 max-w-3xl leading-8 text-[var(--sea-ink-soft)]"
             dangerouslySetInnerHTML={{
