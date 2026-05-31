@@ -15,12 +15,15 @@ type Env = {
 
 const app = new Hono<Env>();
 
-const ALLOWED_ORIGINS = ["http://localhost:5173"];
+const ALLOWED_ORIGINS = ["http://localhost:5173", "http://localhost:3000"];
 
 const TOKEN_TTL = 3600; // 1 hour sliding window
 // const TOKEN_TTL = 10; // for testing use
 const MAX_SESSION_TTL = 21600; // 6 hours absolute cutoff cap (Replay protection)
-const COOKIE_NAME = "hls_session";
+
+function getCookieName(audiobookId: string) {
+  return `hls_session_${audiobookId}`;
+}
 
 // ─── UTILITIES ────────────────────────────────────────────────────────────────
 function getContentType(filename: string): string {
@@ -35,12 +38,12 @@ function getCookieOptions(
   audiobookId: string,
   maxAge: number,
 ) {
-  const isProd = c.env.NODE_ENV === "production";
+  // force local to have same settings in production to avoid issues with cookie acceptance in browsers
   return {
     httpOnly: true,
-    secure: true, // Always true; forces local environments onto local SSL setups
-    sameSite: isProd ? ("None" as const) : ("Lax" as const), // None handles cross-subdomain profiles cleanly
-    path: `/audiobook/${audiobookId}/`,
+    secure: true,
+    sameSite: "None" as const,
+    path: `/audiobook/${audiobookId}`,
     maxAge,
   };
 }
@@ -106,7 +109,12 @@ app.post("/:id/session", async (c) => {
     "HS256",
   );
 
-  setCookie(c, COOKIE_NAME, token, getCookieOptions(c, audiobookId, TOKEN_TTL));
+  setCookie(
+    c,
+    getCookieName(audiobookId),
+    token,
+    getCookieOptions(c, audiobookId, TOKEN_TTL),
+  );
 
   return c.json({
     ok: true,
@@ -120,7 +128,7 @@ app.post("/:id/session", async (c) => {
 // ─── 2. SESSION REFRESH (WITH HIJACKING PROTECTION) ──────────────────────────
 app.post("/:id/refresh", async (c) => {
   const audiobookId = c.req.param("id");
-  const currentToken = getCookie(c, COOKIE_NAME);
+  const currentToken = getCookie(c, getCookieName(audiobookId));
 
   if (!currentToken)
     return c.json({ error: "Active streaming session missing" }, 401);
@@ -150,7 +158,7 @@ app.post("/:id/refresh", async (c) => {
 
     setCookie(
       c,
-      COOKIE_NAME,
+      getCookieName(audiobookId),
       newToken,
       getCookieOptions(c, audiobookId, TOKEN_TTL),
     );
@@ -162,7 +170,9 @@ app.post("/:id/refresh", async (c) => {
       refreshAt: new Date((now + TOKEN_TTL - 300) * 1000).toISOString(),
     });
   } catch {
-    deleteCookie(c, COOKIE_NAME, { path: `/audiobook/${audiobookId}/` });
+    deleteCookie(c, getCookieName(audiobookId), {
+      path: `/audiobook/${audiobookId}/`,
+    });
     return c.json(
       { error: "Session expired or capped. Please re-authenticate." },
       401,
@@ -178,7 +188,7 @@ app.get("/:id/:filename{.+}", async (c) => {
   const rangeHeader = c.req.header("Range");
 
   // Auth gatekeeper
-  const sessionToken = getCookie(c, COOKIE_NAME);
+  const sessionToken = getCookie(c, getCookieName(audiobookId));
   if (!sessionToken) return c.json({ error: "Unauthorized access" }, 401);
 
   try {

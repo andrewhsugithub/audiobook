@@ -14,7 +14,7 @@ const app = new Hono<Env>();
 
 // ─── CORS ─────────────────────────────────────────────────────────────────────
 
-const ALLOWED_ORIGINS = ["http://localhost:5173"];
+const ALLOWED_ORIGINS = ["http://localhost:5173", "http://localhost:3000"];
 
 // ─── CORS MANAGEMENT (DYNAMIC WHITELIST) ─────────────────────────────────────
 app.use(
