@@ -37,7 +37,6 @@ function BookComponent() {
   //   'https://playertest.longtailvideo.com/adaptive/alt-audio-no-video/angel-one.m3u8'
   // const audioURL =
   //   'https://stream.mux.com/BV3YZtogl89mg9VcNBhhnHm02Y34zI1nlMuMQfAbl3dM/highest.mp4'
-  // const bookQuery = useBookQuery(bookId)
 
   const audioURL = `${BASE_URL}/audiobook/${bookId}/master.m3u8`
 
@@ -159,6 +158,11 @@ function BookComponent() {
               {isInLibrary ? '✓ In My Library' : '+ My Library'}
             </button>
           </div>
+          <div className="mt-10 max-w-3xl leading-8 text-[var(--sea-ink-soft)]">
+            {book?.description || (
+              <i>No description available for this book.</i>
+            )}
+          </div>
           <div className="mt-6 min-h-[60px] flex flex-col justify-center">
             {isStreamLoading && (
               <div className="text-sm opacity-60 animate-pulse flex items-center gap-2">
@@ -175,14 +179,6 @@ function BookComponent() {
             )}
           </div>
           {/* <AudioPlayer duration={240} initialTime={75} /> */}
-          <div
-            className="mt-10 max-w-3xl leading-8 text-[var(--sea-ink-soft)]"
-            dangerouslySetInnerHTML={{
-              __html:
-                book?.description ||
-                '<i>No description available for this volume.</i>',
-            }}
-          ></div>
         </div>
       </main>
     </div>

@@ -1,4 +1,4 @@
-import { createFileRoute } from '@tanstack/react-router'
+import { createFileRoute, Link } from '@tanstack/react-router'
 import BookCarousel from '../components/BookCarousel'
 
 export const Route = createFileRoute('/')({ component: App })
@@ -113,7 +113,9 @@ function App() {
           <h1 className="display-title text-6xl font-bold">Audiobook</h1>
         </div>
 
-        <button className="island-shell rounded-full px-5 py-3">Browse</button>
+        <Link className="island-shell rounded-full px-5 py-3" to="/library">
+          Browse
+        </Link>
       </div>
 
       {/* Hero */}
