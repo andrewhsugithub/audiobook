@@ -160,4 +160,5 @@ pnpm start
 
 - [ ] status per chunk and per segment basis instead of whole audiobook
 - [ ] need to integrate better auth for auth
+- [ ] refactor types in frontend and backend to be shared in a common package
 - [ ] (super low priority) need to seed voices db with system local voices
