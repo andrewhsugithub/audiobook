@@ -15,7 +15,7 @@ ffmpeg \
   -hls_flags independent_segments \
   -hls_fmp4_init_filename init.mp4 \
   -hls_segment_filename "seg_%05d.m4s" \
-  stream.m3u8
+  master.m3u8
  */
 
 import { readdirSync, writeFileSync } from "node:fs";
@@ -63,7 +63,7 @@ export async function runFFmpeg(opts: FFmpegOptions): Promise<void> {
 
   console.log(`📝 inputs.txt: ${wavFiles.length} entries`);
 
-  const streamM3u8 = join(outputDir, "stream.m3u8");
+  const masterM3u8 = join(outputDir, "master.m3u8");
   const segPattern = join(outputDir, `seg_%0${padWidth}d.m4s`); // e.g. seg_00001.m4s
 
   const args: string[] = [
@@ -107,7 +107,7 @@ export async function runFFmpeg(opts: FFmpegOptions): Promise<void> {
     segPattern,
 
     // Output playlist
-    streamM3u8,
+    masterM3u8,
   ];
 
   console.log("🎞️  Running FFmpeg...");
