@@ -159,6 +159,5 @@ pnpm start
 ### TODO
 
 - [ ] status per chunk and per segment basis instead of whole audiobook
-- [ ] need to seed voices db with system local voices and also external provider voices
-- [ ] need to seed user db with at least one user for testing
 - [ ] need to integrate better auth for auth
+- [ ] (super low priority) need to seed voices db with system local voices

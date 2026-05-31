@@ -92,10 +92,10 @@ my-audiobook-media-dev/
 
 ### TODO:
 
-- [ ] add voice mapping worker
-- [ ] add hls packaging worker
+- [ ] add voice mapping mechanism, currently just use default voice
 - [ ] refactor all worker queues to extract the service logic to /services folder and keep the worker files just for queue handling and orchestration
 - [ ] check/fix/refactor multipart uploading
-- [ ] consider parsing by chapter
+- [ ] (super low priority) consider parsing by chapter
 - [ ] need a queue that polls status from db and see which audiobook is not finished then trigger the next step in the pipeline
 - [ ] discuss the order of voice mapping worker, should the voice mapping have context of the whole book or just the chunk?
+- [ ] add dead letter queue for failed jobs and retry mechanism
