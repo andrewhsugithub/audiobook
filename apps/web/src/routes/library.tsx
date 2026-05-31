@@ -1,14 +1,18 @@
 import { createFileRoute } from '@tanstack/react-router'
 import { useEffect, useRef, useState } from 'react'
 
-import { useFeaturedBooks } from '../utils/queries'
-
 import BookCard from '../components/BookCard'
 import Header from '../components/Header'
 import SearchBar from '../components/SearchBar'
 import UploadButton from '../components/UploadButton'
+import { searchQuery } from '../utils/queries'
+import { useSearch } from '../hooks/useSearch'
 
 export const Route = createFileRoute('/library')({
+  // Prefetch default search (empty = recent books) when route loads
+  loader: async ({ context }) => {
+    await context.queryClient.ensureQueryData(searchQuery(''))
+  },
   component: Library,
 })
 
@@ -18,53 +22,51 @@ const GAP = 24
 function Library() {
   // const { data: featuredBooks } = useFeaturedBooks()
   const { title } = Route.useSearch() as { title?: string }
-  const books = [
-    {
-      id: 1,
-      title: 'Atomic Habits',
-      authors: ['James Clear'],
-      thumbnail: 'https://images.unsplash.com/photo-1544947950-fa07a98d237f',
-      averageRating: 4.8,
-    },
-    {
-      id: 2,
-      title: 'Deep Work',
-      authors: ['Cal Newport'],
-      thumbnail: 'https://images.unsplash.com/photo-1512820790803-83ca734da794',
-      averageRating: 4.5,
-    },
-    {
-      id: 3,
-      title: 'Harry Potter',
-      authors: ['J.K. Rowling'],
-      thumbnail: 'https://images.unsplash.com/photo-1495446815901-a7297e633e8d',
-      averageRating: 4.9,
-    },
-  ]
-
+  const [searchInput, setSearchInput] = useState('')
   const [uploadedBooks, setUploadedBooks] = useState<any[]>([])
-  const [myLibraryBooks, setMyLibraryBooks] = useState<any[]>([])
-  const [search, setSearch] = useState('')
 
   const isMyBooks = title === 'My Books'
 
-  useEffect(() => {
-    if (!isMyBooks) return
+  const myBooks = isMyBooks
+    ? (JSON.parse(localStorage.getItem('myBooks') || '[]') as Array<{
+        id: string
+        title: string
+        author: string
+        coverURL: string
+        ratings: number
+        description: string
+      }>)
+    : []
 
-    const savedBooks = JSON.parse(localStorage.getItem('myBooks') || '[]')
-    setMyLibraryBooks(savedBooks)
-  }, [isMyBooks])
+  const {
+    data: searchData,
+    isLoading,
+    isStale,
+  } = useSearch(isMyBooks ? '' : searchInput)
 
-  const displayBooks = isMyBooks ? [...myLibraryBooks, ...uploadedBooks] : books
+  const apiBooks = searchData?.results ?? []
 
-  const filteredBooks = displayBooks?.filter((book: any) => {
-    const keyword = search.toLowerCase()
+  const displayBooks = isMyBooks
+    ? myBooks.map((b) => ({
+        id: b.id,
+        title: b.title,
+        author: b.author,
+        description: b.description,
+        ratings: b.ratings,
+        coverUrl: b.coverURL,
+        status: 'completed' as const,
+      }))
+    : apiBooks
 
-    return (
-      book.title.toLowerCase().includes(keyword) ||
-      book.authors.join(' ').toLowerCase().includes(keyword)
-    )
-  })
+  const filteredBooks = isMyBooks
+    ? displayBooks.filter((b) => {
+        const q = searchInput.toLowerCase()
+        return (
+          b.title.toLowerCase().includes(q) ||
+          b.author.toLowerCase().includes(q)
+        )
+      })
+    : displayBooks
 
   const handlePdfUpload = (files: FileList | null) => {
     if (!files) return
@@ -76,11 +78,11 @@ function Library() {
 
         title: file.name.replace('.pdf', ''),
 
-        authors: ['Uploaded PDF'],
+        author: 'Upload PDF',
 
-        thumbnail: 'https://placehold.co/300x450?text=PDF',
+        coverURL: 'https://placehold.co/300x450?text=PDF',
 
-        averageRating: 0,
+        ratings: 0,
 
         file,
       }))
@@ -119,13 +121,24 @@ function Library() {
         right={
           <div className="flex items-center gap-3">
             {isMyBooks && <UploadButton onUpload={handlePdfUpload} />}
-            <SearchBar value={search} onChange={setSearch} />
+            <SearchBar value={searchInput} onChange={setSearchInput} />
           </div>
         }
         backTo="/"
       />
 
       <main className="p-2.5 content-start">
+        {isLoading && (
+          <p className="text-sm opacity-50 mb-4 animate-pulse">Searching...</p>
+        )}
+        {isStale && !isLoading && (
+          <p className="text-sm opacity-30 mb-4">Updating results...</p>
+        )}
+        {!isLoading && searchInput && filteredBooks.length === 0 && (
+          <p className="text-sm opacity-50 mb-4">
+            No results for &ldquo;{searchInput}&rdquo;
+          </p>
+        )}
         <section className="col-span-full">
           {/* <h2 className="pb-4 opacity-70 text-base">View All Books</h2> */}
           <ul
@@ -137,35 +150,25 @@ function Library() {
                 : 'repeat(auto-fit,minmax(220px,280px))',
             }}
           >
-            {filteredBooks?.map((book: any) => (
+            {filteredBooks.map((book) => (
               <BookCard
                 key={book.id}
-                book={book}
+                bookId={book.id}
                 libraryTitle={title || 'Library'}
               />
             ))}
-            {filteredBooks?.length === 0 && (
-              <p className="text-[var(--sea-ink-soft)]">No books found.</p>
-            )}
+
+            {isLoading &&
+              Array.from({ length: 6 }).map((_, i) => (
+                <li key={i} className="animate-pulse">
+                  <div className="aspect-2/3 bg-white/5 rounded" />
+                  <div className="mt-2 h-4 bg-white/5 rounded w-3/4" />
+                  <div className="mt-1 h-3 bg-white/5 rounded w-1/2" />
+                </li>
+              ))}
           </ul>
         </section>
       </main>
     </div>
   )
-}
-
-export function NoResults() {
-  return <div>Sorry, no results found ...</div>
-}
-
-export function ErrorMessage() {
-  return <div>Woops there was an error...</div>
-}
-
-export function Searching() {
-  return <div>Searching...</div>
-}
-
-export function HasNotSearched() {
-  return <div>Please search for a book</div>
 }

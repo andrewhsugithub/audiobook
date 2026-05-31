@@ -1,98 +1,79 @@
-import { useQueryClient, useQuery } from '@tanstack/react-query'
+import { queryOptions, infiniteQueryOptions } from '@tanstack/react-query'
 
-const BASE_URL = 'https://library-api.uidotdev.workers.dev'
+const API_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8787'
 
-export async function getBook(bookId: string) {
-  const url = `${BASE_URL}/books/${bookId}`
-  const response = await fetch(url)
+export interface AudiobookSummary {
+  id: string
+  title: string
+  author: string
+  description: string
+  ratings: number | null
+  coverUrl: string
+  status: string
+}
 
-  if (!response.ok) {
-    throw new Error('Unable fetch book details')
+export interface SearchResponse {
+  results: AudiobookSummary[]
+  total: number
+  query: string
+  limit: number
+  offset: number
+}
+
+export interface AudiobookInfo {
+  id: string
+  status: string
+  title: string
+  author: string
+  description: string
+  ratings: number | null
+  coverUrl: string
+  isReady: boolean
+  errorMessage: string | null
+}
+
+async function searchAudiobooks(
+  query: string,
+  limit = 50,
+  offset = 0,
+  completeOnly = false,
+): Promise<SearchResponse> {
+  const params = new URLSearchParams({
+    q: query,
+    limit: String(limit),
+    offset: String(offset),
+    completeOnly: String(completeOnly),
+  })
+  const res = await fetch(`${API_URL}/audiobook/search?${params}`)
+  if (!res.ok) throw new Error(`Search failed: ${res.status}`)
+  return res.json()
+}
+
+async function fetchAudiobookInfo(bookId: string): Promise<AudiobookInfo> {
+  const res = await fetch(`${API_URL}/audiobook/${bookId}/info`)
+  if (!res.ok) {
+    if (res.status === 404) throw new Error('Audiobook not found')
+    throw new Error('Failed to load audiobook')
   }
-
-  const data = await response.json()
-  return data
+  return res.json()
 }
 
-export async function getMyBooks() {
-  const url = `${BASE_URL}/books/my-books`
-  const response = await fetch(url)
+export const searchQuery = (query: string) =>
+  queryOptions({
+    queryKey: ['audiobook-search', query],
+    queryFn: () => searchAudiobooks(query),
+    staleTime: 1000 * 30, // 30s — search results can change
+    placeholderData: (prev) => prev, // keep previous results while fetching
+  })
 
-  if (!response.ok) {
-    throw new Error('Unable fetch your checked out books')
-  }
-
-  const data = await response.json()
-  return data
-}
-
-export async function getFeaturedBooks() {
-  const url = `${BASE_URL}/books/featured`
-  const response = await fetch(url)
-
-  if (!response.ok) {
-    throw new Error('Unable fetch featured books')
-  }
-
-  const data = await response.json()
-  return data
-}
-
-export const bookQueries = {
-  all: () => ({
-    queryKey: ['books'],
-  }),
-  detail: (bookId: string) => ({
-    queryKey: ['books', bookId],
-    queryFn: () => getBook(bookId),
-    staleTime: Infinity,
-  }),
-  featured: () => ({
-    queryKey: ['books', 'featured'],
-    queryFn: getFeaturedBooks,
-    staleTime: Infinity,
-  }),
-  myBooks: () => ({
-    queryKey: ['books', 'my-books'],
-    queryFn: getMyBooks,
-  }),
-  // search: (query: string, page: number) => ({
-  //   queryKey: ['books', 'search', query, page],
-  //   queryFn: () => getBookSearchResult(query, page),
-  //   enabled: Boolean(query),
-  //   placeholderData: (previousData) => previousData,
-  // }),
-}
-
-export function useBookQuery(bookId: string) {
-  const queryClient = useQueryClient()
-  return useQuery({
-    ...bookQueries.detail(bookId),
-    initialData: () => {
-      return queryClient
-        .getQueryData(bookQueries.featured().queryKey)
-        ?.find((book: any) => book.id === bookId)
+export const audiobookInfoQuery = (bookId: string) =>
+  queryOptions({
+    queryKey: ['audiobook-info', bookId],
+    queryFn: () => fetchAudiobookInfo(bookId),
+    staleTime: 1000 * 60 * 15,
+    refetchInterval: (query) => {
+      const status = query.state.data?.status
+      if (!status || status === 'completed' || status === 'failed') return false
+      return 5000
     },
   })
-}
-
-export function usePrefetchBookById(bookId: string) {
-  const queryClient = useQueryClient()
-  const prefetch = () => {
-    queryClient.prefetchQuery(bookQueries.detail(bookId))
-  }
-
-  return { prefetch }
-}
-
-export function useFeaturedBooks() {
-  return useQuery(bookQueries.featured())
-}
-
-export function useMyBooks() {
-  return useQuery(bookQueries.myBooks())
-}
-
-// export function useSearchQuery(query: string, page: number) {
-//   return useQuery(bookQueries.search(query, page))
-// }
