@@ -1,12 +1,12 @@
 //!!!!! IMPORTANT !!!!!
-//! if you have manual inputs in your database that you want to preserve, DO NOT RUN THIS SCRIPT! It will reset the users and voices tables and re-populate them with mock data, which will DELETE any existing data in those tables. Use with caution and ideally only in development environments where you don't have critical data.
+//! if you have manual inputs in your database that you want to preserve, DO NOT RUN THIS SCRIPT! It will reset the voices tables and re-populate them with mock data, which will DELETE any existing data in those tables. Use with caution and ideally only in development environments where you don't have critical data.
 
 import { promises as fs } from "node:fs";
-import { reset, seed } from "drizzle-seed";
-import { getDb } from "./index.js";
-import { users, voices } from "./schema/schema.js";
+import { reset } from "drizzle-seed";
+import { getDb } from "../index.js";
+import { voices } from "../schema/schema.js";
 import { DATABASE_URL } from "@audiobook/shared-libs/config/env.js";
-import * as schema from "./schema/schema.js";
+import * as schema from "../schema/schema.js";
 import { parse } from "jsonc-parser";
 
 interface CartesiaVoiceResponse {
@@ -24,42 +24,10 @@ interface CartesiaVoiceResponse {
   is_pro: boolean;
 }
 
-async function main() {
-  console.log("⏳ Initializing unified database seed runner...");
+export async function voiceSeed() {
+  console.log("⏳ Initializing voices database seed runner...");
 
   const db = getDb(DATABASE_URL);
-
-  console.log("🌱 Generating 10 fake user accounts...");
-
-  console.log(
-    "⚠️ WARNING: This will reset the 'users' table and delete all existing user data. Proceeding with seeding mock user accounts... Please confirm (Y/N):",
-  );
-  const resetUserInput = await new Promise((resolve) => {
-    process.stdin.setEncoding("utf-8");
-    process.stdin.on("data", (data) => {
-      resolve(data.toString().trim().toUpperCase());
-    });
-  });
-
-  if (resetUserInput !== "Y") {
-    console.log("❌ Seeding cancelled by user.");
-    process.exit(1);
-  }
-
-  await reset(db, { users: schema.users });
-  await seed(db, { users: schema.users }).refine((f) => ({
-    users: {
-      count: 10,
-      columns: {
-        email: f.email(),
-      },
-    },
-  }));
-
-  console.log(
-    "✓ Mock user accounts successfully populated. Example entry:",
-    await db.select().from(users).limit(1),
-  );
 
   console.log("📖 Reading immutable voice profiles from JSON data file...");
   // TODO: refactor to read from a directory of JSON files
@@ -94,10 +62,7 @@ async function main() {
         encoding: "pcm_s16le",
         sample_rate: 44100,
       },
-      generation_config: {
-        speed: 1.0,
-        volume: 1.0,
-      },
+      generation_config: { speed: 1.0, volume: 1.0 },
     },
   }));
 
@@ -127,11 +92,11 @@ async function main() {
     await db.select().from(voices).limit(1),
   );
 
-  console.log("🚀 All unified database initialization steps complete!");
+  console.log("🚀 Voices database initialization steps complete!");
   process.exit(0);
 }
 
-main().catch((err) => {
+voiceSeed().catch((err) => {
   console.error("❌ Seeding runtime broken:", err);
   process.exit(1);
 });

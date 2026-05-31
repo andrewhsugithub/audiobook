@@ -5,7 +5,10 @@
   "main": "index.js",
   "scripts": {
     "push": "drizzle-kit push",
-    "seed": "tsx src/seed.ts",
+    "seed": "tsx src/seed/seed.ts",
+    "seed:users": "tsx src/seed/users.ts",
+    "seed:voices": "tsx src/seed/voice.ts",
+    "seed:audiobooks": "tsx src/seed/audiobook.ts",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "keywords": [],
@@ -20,6 +23,7 @@
     "postgres": "^3.4.9"
   },
   "devDependencies": {
+    "@faker-js/faker": "^10.4.0",
     "@types/node": "^25.6.0",
     "drizzle-kit": "^0.31.10",
     "drizzle-seed": "^0.3.1",
