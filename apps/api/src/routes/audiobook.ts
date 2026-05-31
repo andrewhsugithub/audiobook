@@ -1,7 +1,7 @@
 import { Context, Hono } from "hono";
 import { getCookie, setCookie, deleteCookie } from "hono/cookie";
 import { sign, verify } from "hono/jwt";
-import { eq } from "@audiobook/db/src/index";
+import { eq, ilike, or, desc, and, asc, sql } from "@audiobook/db/src/index";
 import { getDb } from "@audiobook/db/src";
 import { audiobooks } from "@audiobook/db/src/schema/schema";
 import { storage } from "@audiobook/storage/src/storage.cf";
@@ -65,7 +65,8 @@ app.get("/:id/info", async (c) => {
 
   if (!book) return c.json({ error: "Audiobook not found" }, 404);
 
-  let coverUrl = "https://placehold.co/300x450";
+  // let coverUrl = "https://placehold.co/300x450";
+  let coverUrl = `${c.env.RANDOM_COVER_BASE_URL}/${book.id}/300/450`; // fallback to random seeded cover for better UX while cover is being processed
   if (book.coverBucketName && book.coverS3Key) {
     const baseUrl = new URL(c.req.url).origin;
     const ext = book.coverS3Key.split(".").pop() || "jpg";
@@ -366,6 +367,79 @@ app.get("/:id/:filename{.+}", async (c) => {
       ...corsHeaders,
       "X-Cache-Status": "MISS",
     },
+  });
+});
+
+app.get("/search", async (c) => {
+  const query = c.req.query("q")?.trim() ?? "";
+  const limit = Math.min(parseInt(c.req.query("limit") ?? "30"), 50);
+  const offset = parseInt(c.req.query("offset") ?? "0");
+  const completeOnly = c.req.query("completeOnly") === "true";
+
+  const db = getDb(c.env.HYPERDRIVE.connectionString);
+
+  // Empty query returns recent completed audiobooks then recently updated audiobooks regardless of status
+  const results = await db
+    .select({
+      id: audiobooks.id,
+      title: audiobooks.title,
+      author: audiobooks.author,
+      description: audiobooks.description,
+      ratings: audiobooks.ratings,
+      coverBucketName: audiobooks.coverBucketName,
+      coverS3Key: audiobooks.coverS3Key,
+      status: audiobooks.status,
+      createdAt: audiobooks.createdAt,
+    })
+    .from(audiobooks)
+    .where(
+      completeOnly
+        ? and(
+            eq(audiobooks.status, "completed"),
+            or(
+              ilike(audiobooks.title, `%${query}%`),
+              ilike(audiobooks.author, `%${query}%`),
+            ),
+          )
+        : or(
+            ilike(audiobooks.title, `%${query}%`),
+            ilike(audiobooks.author, `%${query}%`),
+          ),
+    )
+    .orderBy(
+      asc(sql`CASE WHEN ${audiobooks.status} = 'completed' THEN 0 ELSE 1 END`),
+      desc(audiobooks.updatedAt),
+    )
+    .limit(limit)
+    .offset(offset);
+
+  const baseUrl = new URL(c.req.url).origin;
+
+  const mapped = results.map((book) => {
+    // let coverUrl = "https://placehold.co/300x450";
+    let coverUrl = `${c.env.RANDOM_COVER_BASE_URL}/${book.id}/300/450`; // fallback to random seeded cover for better UX while cover is being processed
+    if (book.coverBucketName && book.coverS3Key) {
+      const ext = book.coverS3Key.split(".").pop() ?? "jpg";
+      coverUrl = `${baseUrl}/cover/${book.id}.${ext}`;
+    }
+
+    return {
+      id: book.id,
+      title: book.title,
+      author: book.author,
+      description: book.description,
+      ratings: book.ratings,
+      coverUrl,
+      status: book.status,
+    };
+  });
+
+  return c.json({
+    results: mapped,
+    total: mapped.length,
+    query,
+    limit,
+    offset,
   });
 });
 
