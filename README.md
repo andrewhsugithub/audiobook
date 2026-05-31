@@ -158,7 +158,15 @@ pnpm start
 
 ### TODO
 
+- [ ] provide update api for updating book info and content, frontend and backend
+- [ ] fix/update upload in frontend to integrate with backend's upload api
+- [ ] provide a `completed` tag in frontend
+- [ ] fix home page to show recently updated and completed audiobooks instead of fixed ones
+- [ ] can untoggle `+ My Library`
+- [ ] add filter/query buttons in search page
+
 - [ ] status per chunk and per segment basis instead of whole audiobook
 - [ ] need to integrate better auth for auth
 - [ ] refactor types in frontend and backend to be shared in a common package
+- [ ] (low priority) add a progress bar for the upload and TTS processing
 - [ ] (super low priority) need to seed voices db with system local voices
