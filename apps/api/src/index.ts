@@ -5,6 +5,7 @@ import { swaggerUI } from "@hono/swagger-ui";
 import upload from "./routes/upload";
 import { cors } from "hono/cors";
 import audiobook from "./routes/audiobook";
+import cover from "./routes/cover";
 
 type Env = {
   Bindings: Cloudflare.Env;
@@ -12,11 +13,8 @@ type Env = {
 
 const app = new Hono<Env>();
 
-// ─── CORS ─────────────────────────────────────────────────────────────────────
-
 const ALLOWED_ORIGINS = ["http://localhost:5173", "http://localhost:3000"];
 
-// ─── CORS MANAGEMENT (DYNAMIC WHITELIST) ─────────────────────────────────────
 app.use(
   "/*",
   cors({
@@ -47,6 +45,7 @@ app.get(
 
 app.route("/audiobook", audiobook);
 app.route("/upload", upload);
+app.route("/cover", cover);
 
 app.get(
   "/openapi.json",

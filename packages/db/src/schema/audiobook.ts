@@ -50,8 +50,12 @@ export const audiobooks = pgTable(
     visibility: audiobookVisibilityEnum("visibility")
       .default("private")
       .notNull(),
+    ratings: real("ratings").default(0),
     status: audiobookStatusEnum("status").default("initiated").notNull(),
 
+    // cover image folder, for tracking
+    coverBucketName: varchar("cover_bucket_name", { length: 255 }),
+    coverS3Key: text("cover_s3_key"),
     // chunks folder, for tracking
     chunksBucketName: varchar("chunks_bucket_name", { length: 255 }),
     chunksS3KeyPrefix: text("chunks_s3_key_prefix"),

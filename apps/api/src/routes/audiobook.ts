@@ -7,10 +7,7 @@ import { audiobooks } from "@audiobook/db/src/schema/schema";
 import { storage } from "@audiobook/storage/src/storage.cf";
 
 type Env = {
-  Bindings: Cloudflare.Env & {
-    TOKEN_SECRET: string;
-    NODE_ENV: string;
-  };
+  Bindings: Cloudflare.Env;
 };
 
 const app = new Hono<Env>();
@@ -25,7 +22,6 @@ function getCookieName(audiobookId: string) {
   return `hls_session_${audiobookId}`;
 }
 
-// ─── UTILITIES ────────────────────────────────────────────────────────────────
 function getContentType(filename: string): string {
   if (filename.endsWith(".m3u8")) return "application/vnd.apple.mpegurl";
   if (filename.endsWith(".m4s")) return "video/iso.segment";
@@ -47,6 +43,47 @@ function getCookieOptions(
     maxAge,
   };
 }
+
+app.get("/:id/info", async (c) => {
+  const audiobookId = c.req.param("id");
+  const db = getDb(c.env.HYPERDRIVE.connectionString);
+
+  const [book] = await db
+    .select({
+      id: audiobooks.id,
+      status: audiobooks.status,
+      title: audiobooks.title,
+      author: audiobooks.author,
+      description: audiobooks.description,
+      coverBucketName: audiobooks.coverBucketName,
+      coverS3Key: audiobooks.coverS3Key,
+      ratings: audiobooks.ratings,
+      errorMessage: audiobooks.errorMessage,
+    })
+    .from(audiobooks)
+    .where(eq(audiobooks.id, audiobookId));
+
+  if (!book) return c.json({ error: "Audiobook not found" }, 404);
+
+  let coverUrl = "https://placehold.co/300x450";
+  if (book.coverBucketName && book.coverS3Key) {
+    const baseUrl = new URL(c.req.url).origin;
+    const ext = book.coverS3Key.split(".").pop() || "jpg";
+    coverUrl = `${baseUrl}/cover/${book.id}.${ext}`;
+  }
+
+  return c.json({
+    id: book.id,
+    status: book.status,
+    title: book.title,
+    author: book.author,
+    description: book.description,
+    ratings: book.ratings,
+    coverUrl,
+    isReady: book.status === "completed",
+    errorMessage: book.errorMessage,
+  });
+});
 
 app.get("/:id/status", async (c) => {
   const audiobookId = c.req.param("id");
@@ -81,7 +118,6 @@ app.get("/:id/status", async (c) => {
   });
 });
 
-// ─── 1. SESSION INITIALIZATION ───────────────────────────────────────────────
 app.post("/:id/session", async (c) => {
   const audiobookId = c.req.param("id");
   const db = getDb(c.env.HYPERDRIVE.connectionString);
@@ -97,7 +133,6 @@ app.post("/:id/session", async (c) => {
 
   const now = Math.floor(Date.now() / 1000);
 
-  // Mint token containing sliding expiry AND absolute session ceiling
   const token = await sign(
     {
       sub: audiobookId,
@@ -125,7 +160,6 @@ app.post("/:id/session", async (c) => {
   });
 });
 
-// ─── 2. SESSION REFRESH (WITH HIJACKING PROTECTION) ──────────────────────────
 app.post("/:id/refresh", async (c) => {
   const audiobookId = c.req.param("id");
   const currentToken = getCookie(c, getCookieName(audiobookId));
@@ -180,7 +214,6 @@ app.post("/:id/refresh", async (c) => {
   }
 });
 
-// ─── 3. STREAM PROXY AND CACHE PIPELINE ──────────────────────────────────────
 app.get("/:id/:filename{.+}", async (c) => {
   const audiobookId = c.req.param("id");
   const filename = c.req.param("filename");
@@ -252,13 +285,13 @@ app.get("/:id/:filename{.+}", async (c) => {
 
   // Pass Range header through to R2 for proper byte-range support
   // This is critical for HLS.js seeking and for fMP4 init segment fetching
-  const r2Object = await store.getObjectWithRange(
+  const s3Object = await store.getObjectWithRange(
     c.env.MEDIA_BUCKET_NAME,
     s3Key,
     rangeHeader ?? undefined,
   );
 
-  if (!r2Object) return c.json({ error: "Media asset not found" }, 404);
+  if (!s3Object) return c.json({ error: "Media asset not found" }, 404);
 
   const corsHeaders = {
     // Always set dynamically — never from cache
@@ -273,7 +306,7 @@ app.get("/:id/:filename{.+}", async (c) => {
     // Playlist: private, no CDN cache, no browser cache
     // Different users get same playlist file (VOD) but we still mark private
     // because in future you might personalise playlists
-    return new Response(r2Object.stream, {
+    return new Response(s3Object.stream, {
       status: 200,
       headers: {
         "Content-Type": "application/vnd.apple.mpegurl",
@@ -285,11 +318,11 @@ app.get("/:id/:filename{.+}", async (c) => {
   }
 
   // Serve Range Requests (206 Partial Content)
-  if (rangeHeader && r2Object.rangeResponse) {
+  if (rangeHeader && s3Object.rangeResponse) {
     // Partial content response for Range requests
     // Required for: seeking, progressive loading, some iOS Safari behaviors
-    const { start, end, total } = r2Object.rangeResponse;
-    return new Response(r2Object.stream, {
+    const { start, end, total } = s3Object.rangeResponse;
+    return new Response(s3Object.stream, {
       status: 206, // Partial Content
       headers: {
         "Content-Type": getContentType(filename),
@@ -306,7 +339,7 @@ app.get("/:id/:filename{.+}", async (c) => {
   // Serve & Cache Full Segments (200 OK)
   // Build response WITHOUT CORS headers for caching
   // CORS headers added dynamically after cache read
-  const responseForCache = new Response(r2Object.stream, {
+  const responseForCache = new Response(s3Object.stream, {
     status: 200,
     headers: {
       "Content-Type": getContentType(filename),
