@@ -3,23 +3,15 @@ import { Link } from '@tanstack/react-router'
 import { createStarString } from '../utils/createStarString'
 import BookCard from './BookCard'
 
-type Book = {
-  id: number | string
-  title: string
-  authors: string[]
-  thumbnail: string
-  averageRating?: number
-}
-
 type Props = {
   title: string
-  books: Book[]
+  bookIds: string[]
   linkTo?: string
 }
 
 export default function BookCarousel({
   title,
-  books,
+  bookIds,
   linkTo = '/library',
 }: Props) {
   const scrollRef = useRef<HTMLDivElement>(null)
@@ -106,10 +98,10 @@ export default function BookCarousel({
         ref={scrollRef}
         className="flex gap-15 overflow-x-auto px-6 pb-6 pt-2 scroll-smooth no-scrollbar list-none"
       >
-        {books.map((book) => (
+        {bookIds.map((bookId) => (
           <BookCard
-            key={book.id}
-            book={book}
+            key={bookId}
+            bookId={bookId}
             libraryTitle={title || 'Library'}
             variant="carousel"
           />

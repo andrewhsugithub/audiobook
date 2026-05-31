@@ -93,32 +93,14 @@ export const Route = createFileRoute('/')({ component: App })
 //   )
 // }
 
-const books = [
-  {
-    id: 1,
-    title: 'Atomic Habits',
-    authors: ['James Clear'],
-    thumbnail: 'https://images.unsplash.com/photo-1544947950-fa07a98d237f',
-    averageRating: 4.8,
-  },
-  {
-    id: 2,
-    title: 'Deep Work',
-    authors: ['Cal Newport'],
-    thumbnail: 'https://images.unsplash.com/photo-1512820790803-83ca734da794',
-    averageRating: 4.5,
-  },
-  {
-    id: 3,
-    title: 'Harry Potter',
-    authors: ['J.K. Rowling'],
-    thumbnail: 'https://images.unsplash.com/photo-1495446815901-a7297e633e8d',
-    averageRating: 4.9,
-  },
+const bookIds = [
+  '53a6c3f9-987c-4fbf-b332-2f796df1181d',
+  '1a476490-7c55-4259-821d-db1d3d0b582a',
+  'a83d9366-36db-4d14-a48b-805cc299bdaf',
 ]
 
-const trendingBooks = books
-const myBooks = books.slice(0, 1)
+const trendingBookIds = bookIds
+const myBookIds = bookIds.slice(0, 1)
 
 function App() {
   return (
@@ -164,11 +146,11 @@ function App() {
       {/* Sections */}
       <BookCarousel
         title="New & Trending"
-        books={trendingBooks}
+        bookIds={trendingBookIds}
         linkTo="/library"
       />
 
-      <BookCarousel title="My Books" books={myBooks} linkTo="/library" />
+      <BookCarousel title="My Books" bookIds={myBookIds} linkTo="/library" />
     </div>
   )
 }

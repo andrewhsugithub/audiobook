@@ -1,26 +1,43 @@
 import { Link } from '@tanstack/react-router'
+import { useAudiobookInfo } from '../hooks/useAudiobookInfo'
 
 type Props = {
-  book: any
+  bookId: string
   libraryTitle: string
   variant?: 'library' | 'carousel'
 }
 
 export default function BookCard({
-  book,
+  bookId,
   libraryTitle,
   variant = 'library',
 }: Props) {
   const isCarousel = variant === 'carousel'
 
+  const {
+    data: book,
+    isLoading: isInfoLoading,
+    isError: isInfoError,
+    error: infoError,
+  } = useAudiobookInfo(bookId)
+
+  if (isInfoError) {
+    return (
+      <div className="min-w-[360px] p-6 text-center text-red-400">
+        <p className="font-semibold">Failed to load audiobook metadata:</p>
+        <p className="text-sm opacity-70">{infoError?.message}</p>
+      </div>
+    )
+  }
+
   return (
     <li
-      key={book.id}
+      key={bookId}
       className={`group [perspective:900px] ${isCarousel ? 'w-[160px] shrink-0' : 'w-full'}`}
     >
       <Link
         to="/books/$bookId"
-        params={{ bookId: String(book.id) }}
+        params={{ bookId: String(bookId) }}
         search={{ title: libraryTitle || 'Library' }}
         className="relative block overflow-hidden rounded-[4px]
           shadow-[0_18px_35px_rgba(0,0,0,0.22)]
@@ -40,23 +57,37 @@ export default function BookCard({
         {/* <div className="absolute inset-0 z-20 bg-gradient-to-br from-white/25 via-transparent to-black/20" /> */}
 
         <div className="aspect-[2/3] w-full overflow-hidden">
-          <img
-            src={book.thumbnail}
-            alt={book.title}
-            className="h-full w-full object-cover"
-          />
+          {isInfoLoading ? (
+            <div className="animate-pulse text-xs opacity-40">
+              Loading Cover...
+            </div>
+          ) : book?.coverUrl ? (
+            <img
+              src={book?.coverUrl}
+              alt={book?.title}
+              className="h-full w-full object-cover"
+            />
+          ) : null}
         </div>
       </Link>
       <h3 className="pt-4 text-[clamp(1rem,2.5vw,1.1rem)]/[1.2] font-bold overflow-hidden text-ellipsis">
-        <a
-          href="#"
-          className="no-underline ease-in-out duration-150 transition-all"
-        >
-          {book.title}
-        </a>
+        {isInfoLoading ? (
+          <span className="animate-pulse bg-white/10 rounded h-8 w-48 block"></span>
+        ) : (
+          <a
+            href="#"
+            className="no-underline ease-in-out duration-150 transition-all"
+          >
+            {book?.title}
+          </a>
+        )}
       </h3>
       <small className="block pt-2 uppercase opacity-70 text-xs">
-        {book.authors.join(', ')}
+        {isInfoLoading ? (
+          <span className="animate-pulse bg-white/5 rounded h-5 w-24 block" />
+        ) : (
+          book?.author || 'Anonymous Author'
+        )}
       </small>
       {/* <span className="block pt-3 text-[0.6rem]">
         {book.averageRating
