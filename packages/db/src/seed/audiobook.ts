@@ -21,11 +21,16 @@ export async function audiobookSeed() {
   );
 
   const bookTitles = faker.helpers.uniqueArray(faker.book.title, 100);
+  const uuids = faker.helpers.uniqueArray(faker.string.uuid, 300);
 
   await seed(db, { audiobooks: schema.audiobooks }).refine((f) => ({
     audiobooks: {
       count: 30,
       columns: {
+        id: f.valuesFromArray({
+          values: uuids,
+          isUnique: true,
+        }),
         // Uniformly distribute books across our generated real users
         userId: f.valuesFromArray({ values: liveUsers.map((u) => u.id) }),
 
@@ -38,11 +43,13 @@ export async function audiobookSeed() {
         // leave others as defaults or nulls
         status: f.default({ defaultValue: "initiated" }),
 
-        rawFileBucketName: f.default({ defaultValue: null }),
-        rawFileS3Key: f.default({ defaultValue: null }),
+        rawFileName: f.default({ defaultValue: null }),
+        rawFileSizeBytes: f.default({ defaultValue: null }),
         mimeType: f.default({ defaultValue: null }),
+
         coverBucketName: f.default({ defaultValue: null }),
         coverS3Key: f.default({ defaultValue: null }),
+
         chunksBucketName: f.default({ defaultValue: null }),
         chunksS3KeyPrefix: f.default({ defaultValue: null }),
 
