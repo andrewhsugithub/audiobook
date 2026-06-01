@@ -25,6 +25,38 @@ except ImportError:
     FISHAUDIO_AVAILABLE = False
     print("mlx_audio not found")
 
+try:
+    from f5_tts.api import F5TTS
+
+    F5TTS_AVAILABLE = True
+except ImportError:
+    F5TTS_AVAILABLE = False
+    print("f5_tts not found")
+
+try:
+    from kokoro import KPipeline
+
+    KOKORO_AVAILABLE = True
+except ImportError:
+    KOKORO_AVAILABLE = False
+    print("kokoro not found")
+
+try:
+    from orpheus_tts import OrpheusModel
+
+    ORPHEUS_AVAILABLE = True
+except ImportError:
+    ORPHEUS_AVAILABLE = False
+    print("orpheus_tts not found")
+
+try:
+    from indextts.infer import IndexTTS
+
+    INDEXTTS_AVAILABLE = True
+except ImportError:
+    INDEXTTS_AVAILABLE = False
+    print("indextts not found")
+
 BASE_DIR = Path(__file__).resolve().parent
 ENV = os.getenv("ENV", "local")
 env_file = BASE_DIR / f"../../.env.{ENV}"
@@ -68,15 +100,51 @@ torch.load = patched_torch_load
 print(f"Loading ChatterboxTurboTTS onto {device}...")
 # TODO: should load the model in the background and return a loading status until it's ready, rather than blocking the server from starting until the model is loaded, use async loop for this
 model = ChatterboxTurboTTS.from_pretrained(device=device)
+
+model_fish = None
 if FISHAUDIO_AVAILABLE:
     print(f"Loading FishAudio S2 Pro onto {device}...")
     model_fish = load_model("mlx-community/fish-audio-s2-pro-8bit")
+
+model_f5 = None
+if F5TTS_AVAILABLE:
+    print(f"Loading F5-TTS onto {device}...")
+    model_f5 = F5TTS(model="F5TTS_v1_Base", device=device)
+
+model_kokoro = None
+if KOKORO_AVAILABLE:
+    print(f"Loading Kokoro-82M onto {device}...")
+    model_kokoro = KPipeline(
+        lang_code="a", repo_id="hexgrad/Kokoro-82M", device=device
+    )
+
+model_orpheus = None
+if ORPHEUS_AVAILABLE:
+    print("Loading Orpheus-3B (vLLM manages device placement)...")
+    model_orpheus = OrpheusModel(
+        model_name="canopylabs/orpheus-3b-0.1-ft",
+        max_model_len=2048,
+    )
+
+model_indextts = None
+if INDEXTTS_AVAILABLE:
+    indextts_dir = os.environ.get("INDEXTTS_CHECKPOINTS", "./checkpoints")
+    print(f"Loading IndexTTS-1.5 from {indextts_dir}...")
+    model_indextts = IndexTTS(
+        model_dir=indextts_dir,
+        cfg_path=os.path.join(indextts_dir, "config.yaml"),
+    )
+
 print("Model loaded successfully and is ready for inference!")
 
 
 class Model(str, Enum):
     chatterbox_turbo = "chatterbox-turbo"
     fishaudio_s2_pro = "fishaudio-s2-pro"
+    f5_tts = "f5-tts"
+    kokoro = "kokoro"
+    orpheus = "orpheus"
+    indextts = "indextts"
 
 
 class GenerateRequest(BaseModel):
@@ -91,7 +159,11 @@ class GenerateRequest(BaseModel):
         return v
 
     # model
-    model: Model = Model.chatterbox_turbo  # or Model.fishaudio_s2_pro
+    model: Model = Model.chatterbox_turbo
+
+    # Per-model extras
+    voiceText: Optional[str] = None  # F5-TTS reference transcript (empty -> Whisper auto)
+    voicePreset: Optional[str] = None  # Kokoro / Orpheus preset voice name
 
     # Params, currently all optional with defaults, but can be set by the client for more control over generation
     repetitionPenalty: float = 1.2
@@ -218,7 +290,81 @@ def tts(req: GenerateRequest):
                     )
 
                 output_tmp_path = os.path.join(tmpdir, files[0])
-                print(f"✅ Found FishAudio output at: {output_tmp_path}")
+                print(f"Found FishAudio output at: {output_tmp_path}")
+
+            elif req.model == Model.f5_tts:
+                if not F5TTS_AVAILABLE:
+                    raise HTTPException(
+                        status_code=500, detail="F5-TTS model not available"
+                    )
+                if not audio_path:
+                    raise HTTPException(
+                        status_code=400,
+                        detail="F5-TTS requires voiceURI (reference audio)",
+                    )
+
+                wav, sr, _ = model_f5.infer(
+                    ref_file=audio_path,
+                    ref_text=req.voiceText or "",  # "" -> Whisper auto-transcribe
+                    gen_text=req.text,
+                )
+                ta.save(
+                    output_tmp_path, torch.from_numpy(wav).unsqueeze(0), sr
+                )
+
+            elif req.model == Model.kokoro:
+                if not KOKORO_AVAILABLE:
+                    raise HTTPException(
+                        status_code=500, detail="Kokoro model not available"
+                    )
+
+                voice = req.voicePreset or "af_heart"
+                chunks = list(model_kokoro(req.text, voice=voice))
+                if not chunks:
+                    raise HTTPException(
+                        status_code=500, detail="Kokoro produced no audio"
+                    )
+                audio = torch.cat([c[2] for c in chunks]).unsqueeze(0)
+                ta.save(output_tmp_path, audio, 24000)
+
+            elif req.model == Model.orpheus:
+                if not ORPHEUS_AVAILABLE:
+                    raise HTTPException(
+                        status_code=500, detail="Orpheus model not available"
+                    )
+
+                voice = req.voicePreset or "tara"
+                pcm = b"".join(
+                    model_orpheus.generate_speech(
+                        prompt=req.text,
+                        voice=voice,
+                        repetition_penalty=max(req.repetitionPenalty, 1.1),
+                        temperature=req.temperature,
+                        top_p=req.top_p,
+                    )
+                )
+                if not pcm:
+                    raise HTTPException(
+                        status_code=500, detail="Orpheus produced no audio"
+                    )
+                audio = (
+                    torch.frombuffer(pcm, dtype=torch.int16).float().unsqueeze(0)
+                    / 32768.0
+                )
+                ta.save(output_tmp_path, audio, 24000)
+
+            elif req.model == Model.indextts:
+                if not INDEXTTS_AVAILABLE:
+                    raise HTTPException(
+                        status_code=500, detail="IndexTTS model not available"
+                    )
+                if not audio_path:
+                    raise HTTPException(
+                        status_code=400,
+                        detail="IndexTTS requires voiceURI (reference audio)",
+                    )
+
+                model_indextts.infer(audio_path, req.text, output_tmp_path)
 
             file_url, expires_at = upload_to_s3(
                 output_tmp_path, dst_bucket, output_s3_key
@@ -254,5 +400,34 @@ example request body for fishaudio-s2-pro:
     "voiceURI": "s3://audiobook-local-public/voices/jean.mp3",
     "model": "fishaudio-s2-pro",
     "targetURI": "s3://audiobook-test-private/test/"
+}
+example request body for f5-tts (needs ref audio + ref text):
+{
+    "text": "The darkness pressed in around us as we crept through the Forbidden Forest.",
+    "voiceURI": "s3://audiobook-local-public/voices/harry_potter.mp3",
+    "voiceText": "The boy who lived. Mr. and Mrs. Dursley of number four privet drive.",
+    "model": "f5-tts",
+    "targetURI": "s3://audiobook-test-public/test/"
+}
+example request body for kokoro (preset voice, no cloning):
+{
+    "text": "The darkness pressed in around us as we crept through the Forbidden Forest.",
+    "voicePreset": "af_heart",
+    "model": "kokoro",
+    "targetURI": "s3://audiobook-test-public/test/"
+}
+example request body for orpheus (preset voice + emotion tags):
+{
+    "text": "The darkness pressed in around us as we crept through the Forbidden Forest. <gasp> Wands raised, we could hear the Death Eaters approaching.",
+    "voicePreset": "tara",
+    "model": "orpheus",
+    "targetURI": "s3://audiobook-test-public/test/"
+}
+example request body for indextts (voice cloning):
+{
+    "text": "The darkness pressed in around us as we crept through the Forbidden Forest.",
+    "voiceURI": "s3://audiobook-local-public/voices/harry_potter.mp3",
+    "model": "indextts",
+    "targetURI": "s3://audiobook-test-public/test/"
 }
 """
