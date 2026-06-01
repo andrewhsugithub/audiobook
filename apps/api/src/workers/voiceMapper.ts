@@ -100,7 +100,8 @@ export async function handleVoiceMappingQueue(
 
       const pickVoice = (speakerTag: string): string => {
         if (speakerTag === NARRATOR_TAG) return narratorVoiceId;
-        const slot = fnv1a(`${audiobookId}:${speakerTag}`) % characterPool.length;
+        const slot =
+          fnv1a(`${audiobookId}:${speakerTag}`) % characterPool.length;
         return characterPool[slot].id;
       };
 
@@ -124,6 +125,19 @@ export async function handleVoiceMappingQueue(
             rawSpeakerTag: speaker,
             emotionTag: emotion,
             assignedVoiceId,
+          })
+          .onConflictDoUpdate({
+            target: [
+              segments.audiobookId,
+              segments.chunkIdx,
+              segments.segmentIdx,
+            ],
+            set: {
+              content,
+              rawSpeakerTag: speaker,
+              emotionTag: emotion,
+              assignedVoiceId,
+            },
           })
           .returning({ id: segments.id });
 
