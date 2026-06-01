@@ -3,8 +3,9 @@ import { getCookie, setCookie, deleteCookie } from "hono/cookie";
 import { sign, verify } from "hono/jwt";
 import { eq, ilike, or, desc, and, asc, sql } from "@audiobook/db/src/index";
 import { getDb } from "@audiobook/db/src";
-import { audiobooks } from "@audiobook/db/src/schema/schema";
+import { assets, audiobooks } from "@audiobook/db/src/schema/schema";
 import { storage } from "@audiobook/storage/src/storage.cf";
+import { ParserJobData } from "../types/jobs";
 
 type Env = {
   Bindings: Cloudflare.Env;
@@ -44,6 +45,7 @@ function getCookieOptions(
   };
 }
 
+//? maybe cache
 app.get("/:id/info", async (c) => {
   const audiobookId = c.req.param("id");
   const db = getDb(c.env.HYPERDRIVE.connectionString);
@@ -440,6 +442,234 @@ app.get("/search", async (c) => {
     query,
     limit,
     offset,
+  });
+});
+
+//! add endpoint to edit cover image
+app.patch("/:id", async (c) => {
+  const audiobookId = c.req.param("id");
+  const db = getDb(c.env.HYPERDRIVE.connectionString);
+  const body = await c.req.json();
+
+  const { title, author, description, ratings } = body;
+
+  // Only allow updating these fields
+  const updateFields: Record<string, unknown> = {};
+
+  if (title !== undefined) {
+    if (typeof title !== "string" || title.trim().length === 0) {
+      return c.json({ error: "title must be a non-empty string" }, 400);
+    }
+    updateFields.title = title.trim();
+  }
+
+  if (author !== undefined) {
+    if (typeof author !== "string") {
+      return c.json({ error: "author must be a string" }, 400);
+    }
+    updateFields.author = author.trim() || null;
+  }
+
+  if (description !== undefined) {
+    if (typeof description !== "string") {
+      return c.json({ error: "description must be a string" }, 400);
+    }
+    updateFields.description = description.trim() || null;
+  }
+
+  if (ratings !== undefined) {
+    const r = Number(ratings);
+    if (isNaN(r) || r < 0 || r > 5) {
+      return c.json({ error: "ratings must be a number between 0 and 5" }, 400);
+    }
+    updateFields.ratings = r;
+  }
+
+  const [book] = await db
+    .select({ id: audiobooks.id })
+    .from(audiobooks)
+    .where(eq(audiobooks.id, audiobookId));
+
+  if (!book) return c.json({ error: "Audiobook not found" }, 404);
+
+  const [updated] = await db
+    .update(audiobooks)
+    .set(updateFields)
+    .where(eq(audiobooks.id, audiobookId))
+    .returning({
+      id: audiobooks.id,
+      title: audiobooks.title,
+      author: audiobooks.author,
+      description: audiobooks.description,
+      ratings: audiobooks.ratings,
+      updatedAt: audiobooks.updatedAt,
+    });
+
+  return c.json({ ok: true, book: updated });
+});
+
+const UPLOAD_EXPIRY_SECONDS = 3600;
+const MAX_FILE_SIZE_BYTES = 50 * 1024 * 1024; // 50MB
+
+app.post("/:id/reupload", async (c) => {
+  const audiobookId = c.req.param("id");
+  const db = getDb(c.env.HYPERDRIVE.connectionString);
+  const bucket = storage.getInstance(c.env);
+  const body = await c.req.json();
+
+  const { userId, fileName, fileSizeBytes, text } = body;
+
+  //! check if same user is reuploading or if userId is missing
+  if (!userId) return c.json({ error: "Missing userId" }, 400);
+
+  // Verify book exists and belongs to user
+  const [book] = await db
+    .select({
+      id: audiobooks.id,
+      userId: audiobooks.userId,
+      status: audiobooks.status,
+    })
+    .from(audiobooks)
+    .where(eq(audiobooks.id, audiobookId));
+
+  if (!book) return c.json({ error: "Audiobook not found" }, 404);
+
+  // Prevent reupload while actively processing
+  if (book.status === "processing") {
+    return c.json(
+      {
+        error: "Cannot reupload while audiobook is being processed",
+        status: book.status,
+      },
+      409,
+    );
+  }
+
+  console.log(
+    `[re-upload] Received re-upload request for audiobook ID: ${c.req.param("id")}`,
+  );
+
+  const bucketName = c.env.RAW_BUCKET_NAME;
+
+  //  Direct text reupload
+  if (text && typeof text === "string") {
+    const textBytes = new TextEncoder().encode(text);
+
+    if (textBytes.length > MAX_FILE_SIZE_BYTES) {
+      return c.json({ error: "Text exceeds 50MB limit" }, 413);
+    }
+
+    console.log(
+      `[re-upload] Direct text submission received for book upload. Bypassing multipart.`,
+    );
+
+    const generatedFileName = `${crypto.randomUUID().slice(0, 8)}.txt`;
+    const textFileKey = `raw-uploads/${userId}/${audiobookId}/${generatedFileName}`;
+
+    // Reset pipeline state
+    await db
+      .update(audiobooks)
+      .set({
+        status: "finished_upload",
+        rawFileName: generatedFileName,
+        rawFileSizeBytes: textBytes.length,
+        mimeType: "text/plain",
+        //? maybe clear HLS output key
+        errorMessage: null,
+      })
+      .where(eq(audiobooks.id, audiobookId));
+
+    await db.insert(assets).values({
+      audiobookId,
+      type: "raw_upload",
+      bucketName,
+      s3Key: textFileKey,
+      fileName: generatedFileName,
+      mimeType: "text/plain",
+      sizeBytes: textBytes.length,
+      uploadStatus: "ready_to_upload",
+    });
+
+    await bucket.putObject(bucketName, textFileKey, text, "text/plain");
+
+    await c.env.PARSER_QUEUE.send({
+      audiobookId,
+      userId,
+      s3FileKey: textFileKey,
+      fileName: generatedFileName,
+    } satisfies ParserJobData);
+
+    console.log(`[re-upload] Direct text upload for book ${audiobookId}`);
+
+    return c.json({
+      ok: true,
+      bookId: audiobookId,
+      status: "finished_upload",
+      strategy: "direct-write",
+    });
+  }
+
+  //  Multipart reupload
+  if (!fileName || !fileSizeBytes) {
+    return c.json({ error: "Missing fileName or fileSizeBytes" }, 400);
+  }
+
+  const mimeType = fileName.endsWith(".pdf")
+    ? "application/pdf"
+    : fileName.endsWith(".txt")
+      ? "text/plain"
+      : null;
+
+  if (!mimeType) {
+    return c.json({ error: "Only PDF and TXT files supported" }, 415);
+  }
+
+  const rawUploadKey = `raw-uploads/${userId}/${audiobookId}/${fileName}`;
+  const uploadId = await bucket.initiateMultipartUpload(
+    bucketName,
+    rawUploadKey,
+    mimeType,
+  );
+
+  const uploadExpiresAt = new Date(Date.now() + UPLOAD_EXPIRY_SECONDS * 1000);
+
+  // Reset pipeline state
+  await db
+    .update(audiobooks)
+    .set({
+      status: "ready_to_upload",
+      rawFileName: fileName,
+      rawFileSizeBytes: fileSizeBytes,
+      mimeType,
+      errorMessage: null,
+    })
+    .where(eq(audiobooks.id, audiobookId));
+
+  await db.insert(assets).values({
+    audiobookId,
+    type: "raw_upload",
+    bucketName,
+    s3Key: rawUploadKey,
+    fileName,
+    mimeType,
+    sizeBytes: fileSizeBytes,
+    uploadStatus: "pending_upload",
+    uploadId,
+    uploadExpiresAt,
+  });
+
+  console.log(
+    `[re-upload] Initiated audiobook ID: ${audiobookId} for multipart re-upload.`,
+  );
+
+  return c.json({
+    ok: true,
+    bookId: audiobookId,
+    status: "ready_to_upload",
+    strategy: "multipart",
+    uploadId,
+    fileKey: rawUploadKey,
+    expiresAt: uploadExpiresAt.toISOString(),
   });
 });
 
