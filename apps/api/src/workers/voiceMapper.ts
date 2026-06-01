@@ -1,4 +1,3 @@
-// ! fix voice mapping, currently just use third party TTS' default voice for everything
 //! Across playlist updates: gaps/jumps are allowed.
 //! Inside one playlist: segment sequence numbers are implicitly consecutive from the starting MEDIA-SEQUENCE.
 
@@ -8,6 +7,41 @@ import { voices } from "@audiobook/db/src/schema/voices";
 import { audiobooks } from "@audiobook/db/src/schema/schema";
 import { storage } from "@audiobook/storage/src/storage.cf";
 import type { TTSJobData, VoiceMappingJobData } from "../types/jobs";
+
+const NARRATOR_TAG = "Narrator";
+
+// Tagger emits `[Speaker] <emotion value="..."/> rest of line`.
+// `[Speaker] rest of line` (no emotion tag) is also legal per the tagging prompt.
+const SPEAKER_RE = /^\[([^\]]+)\]\s*/;
+const EMOTION_RE = /^<emotion\s+value="([^"]+)"\s*\/>\s*/;
+
+function parseTaggedLine(line: string): {
+  speaker: string;
+  emotion: string;
+  content: string;
+} {
+  let rest = line;
+  const speakerMatch = rest.match(SPEAKER_RE);
+  const speaker = speakerMatch ? speakerMatch[1].trim() : "Unknown";
+  if (speakerMatch) rest = rest.slice(speakerMatch[0].length);
+
+  const emotionMatch = rest.match(EMOTION_RE);
+  const emotion = emotionMatch ? emotionMatch[1].trim() : "neutral";
+  if (emotionMatch) rest = rest.slice(emotionMatch[0].length);
+
+  return { speaker, emotion, content: rest.trim() };
+}
+
+// Stable 32-bit FNV-1a so the same `(audiobookId, speakerTag)` always picks
+// the same slot in the voice pool across chunks and re-runs.
+function fnv1a(input: string): number {
+  let h = 0x811c9dc5;
+  for (let i = 0; i < input.length; i++) {
+    h ^= input.charCodeAt(i);
+    h = Math.imul(h, 0x01000193);
+  }
+  return h >>> 0;
+}
 
 export async function handleVoiceMappingQueue(
   batch: MessageBatch<VoiceMappingJobData>,
@@ -46,18 +80,39 @@ export async function handleVoiceMappingQueue(
       const rawText = await textObject.transformToString();
       const lines = rawText.split("\n");
 
+      // Load the Cartesia voice pool once per chunk. Narrator gets a reserved
+      // slot (first voice); other speakers are hashed into the remaining pool
+      // so the same character always maps to the same voice book-wide.
+      const cartesiaVoices = await db
+        .select({ id: voices.id })
+        .from(voices)
+        .where(eq(voices.provider, "cartesia"))
+        .orderBy(voices.id);
+
+      if (cartesiaVoices.length === 0) {
+        throw new Error(
+          "No Cartesia voices available in `voices` table — run db seed.",
+        );
+      }
+      const narratorVoiceId = cartesiaVoices[0].id;
+      const characterPool =
+        cartesiaVoices.length > 1 ? cartesiaVoices.slice(1) : cartesiaVoices;
+
+      const pickVoice = (speakerTag: string): string => {
+        if (speakerTag === NARRATOR_TAG) return narratorVoiceId;
+        const slot = fnv1a(`${audiobookId}:${speakerTag}`) % characterPool.length;
+        return characterPool[slot].id;
+      };
+
       //! don't load whole file into memory, stream line by line
       for (let i = 0; i < lines.length; i++) {
         const line = lines[i];
         if (!line.trim()) continue; // skip empty lines
 
-        // extract speaker label
-        const speakerMatch = line.match(/^\[(.*?)\]/);
-        const emotionMatch = line.match(/^\[(?:.*?)\]\[(.*?)\]/); // matches the second tag if it exists
-        const content = line.replace(/^(?:\[(?:.*?)\]){1,2}\s*/, ""); // remove one or two tags at the start of the line
+        const { speaker, emotion, content } = parseTaggedLine(line);
+        if (!content) continue; // tag-only line with no transcript
 
-        // const assignedVoiceId = "5ce3eabe-dcec-41a1-a394-79d1b30b74ad"; // default voice id
-        const assignedVoiceId = "0b0db781-c8ab-4fb7-8885-d1dff2c98b66";
+        const assignedVoiceId = pickVoice(speaker);
 
         const result = await db
           .insert(segments)
@@ -65,9 +120,9 @@ export async function handleVoiceMappingQueue(
             audiobookId,
             chunkIdx,
             segmentIdx: i,
-            content: content, //? maybe put into S3
-            rawSpeakerTag: speakerMatch ? speakerMatch[1] : "Unknown",
-            // emotionTag: emotionMatch ? emotionMatch[1] : "Neutral",
+            content, //? maybe put into S3
+            rawSpeakerTag: speaker,
+            emotionTag: emotion,
             assignedVoiceId,
           })
           .returning({ id: segments.id });
@@ -82,7 +137,7 @@ export async function handleVoiceMappingQueue(
         });
 
         console.log(
-          `[voice-mapping queue] Mapped segment ${content} id: ${segmentId} idx: ${i} for tagged chunk ${chunkIdx} audiobook ${audiobookId}.`,
+          `[voice-mapping queue] Mapped segment "${content}" id: ${segmentId} idx: ${i} speaker: ${speaker} emotion: ${emotion} voice: ${assignedVoiceId} for tagged chunk ${chunkIdx} audiobook ${audiobookId}.`,
         );
 
         const data: TTSJobData = {
