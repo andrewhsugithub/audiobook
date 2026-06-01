@@ -4,11 +4,12 @@ import { useEffect, useRef, useState } from 'react'
 import BookCard from '../components/BookCard'
 import Header from '../components/Header'
 import SearchBar from '../components/SearchBar'
-import UploadButton from '../components/UploadButton'
 import { searchQuery } from '../utils/queries'
 import { useSearch } from '../hooks/useSearch'
+import { getMyBooks } from '../utils/myBooks'
 
 export const Route = createFileRoute('/library')({
+  head: () => ({ meta: [{ title: 'Library · Audiobook' }] }),
   // Prefetch default search (empty = recent books) when route loads
   loader: async ({ context }) => {
     await context.queryClient.ensureQueryData(searchQuery(''))
@@ -18,33 +19,30 @@ export const Route = createFileRoute('/library')({
 
 const MAX_CARD = 280
 const GAP = 24
+const PAGE_SIZE = 50
 
 function Library() {
-  // const { data: featuredBooks } = useFeaturedBooks()
   const { title } = Route.useSearch() as { title?: string }
   const [searchInput, setSearchInput] = useState('')
-  const [uploadedBooks, setUploadedBooks] = useState<any[]>([])
+  const [limit, setLimit] = useState(PAGE_SIZE)
 
   const isMyBooks = title === 'My Books'
 
-  const myBooks = isMyBooks
-    ? (JSON.parse(localStorage.getItem('myBooks') || '[]') as Array<{
-        id: string
-        title: string
-        author: string
-        coverURL: string
-        ratings: number
-        description: string
-      }>)
-    : []
+  const myBooks = isMyBooks ? getMyBooks() : []
+
+  // Reset paging whenever the query changes so each new search starts fresh.
+  useEffect(() => {
+    setLimit(PAGE_SIZE)
+  }, [searchInput])
 
   const {
     data: searchData,
     isLoading,
     isStale,
-  } = useSearch(isMyBooks ? '' : searchInput)
+  } = useSearch(isMyBooks ? '' : searchInput, limit)
 
   const apiBooks = searchData?.results ?? []
+  const total = searchData?.total ?? 0
 
   const displayBooks = isMyBooks
     ? myBooks.map((b) => ({
@@ -53,7 +51,7 @@ function Library() {
         author: b.author,
         description: b.description,
         ratings: b.ratings,
-        coverUrl: b.coverURL,
+        coverUrl: b.coverUrl,
         status: 'completed' as const,
       }))
     : apiBooks
@@ -68,27 +66,9 @@ function Library() {
       })
     : displayBooks
 
-  const handlePdfUpload = (files: FileList | null) => {
-    if (!files) return
-
-    const newBooks = Array.from(files)
-      .filter((file) => file.type === 'application/pdf')
-      .map((file, index) => ({
-        id: `uploaded-${Date.now()}-${index}`,
-
-        title: file.name.replace('.pdf', ''),
-
-        author: 'Upload PDF',
-
-        coverURL: 'https://placehold.co/300x450?text=PDF',
-
-        ratings: 0,
-
-        file,
-      }))
-
-    setUploadedBooks((prev) => [...prev, ...newBooks])
-  }
+  // More server results available than we've loaded (search view only).
+  const canLoadMore = !isMyBooks && apiBooks.length < total
+  const isEmpty = !isLoading && filteredBooks.length === 0
 
   const gridRef = useRef<HTMLUListElement>(null)
   const [isMultiRow, setIsMultiRow] = useState(false)
@@ -120,7 +100,6 @@ function Library() {
         title={title || 'Library'}
         right={
           <div className="flex items-center gap-3">
-            {isMyBooks && <UploadButton onUpload={handlePdfUpload} />}
             <SearchBar value={searchInput} onChange={setSearchInput} />
           </div>
         }
@@ -134,11 +113,21 @@ function Library() {
         {isStale && !isLoading && (
           <p className="text-sm opacity-30 mb-4">Updating results...</p>
         )}
-        {!isLoading && searchInput && filteredBooks.length === 0 && (
-          <p className="text-sm opacity-50 mb-4">
-            No results for &ldquo;{searchInput}&rdquo;
-          </p>
-        )}
+        {isEmpty &&
+          (searchInput ? (
+            <p className="text-sm opacity-50 mb-4">
+              No results for &ldquo;{searchInput}&rdquo;
+            </p>
+          ) : isMyBooks ? (
+            <p className="text-sm opacity-50 mb-4">
+              Your library is empty. Add books from the catalog to see them
+              here.
+            </p>
+          ) : (
+            <p className="text-sm opacity-50 mb-4">
+              No audiobooks yet. Upload one to get started.
+            </p>
+          ))}
         <section className="col-span-full">
           {/* <h2 className="pb-4 opacity-70 text-base">View All Books</h2> */}
           <ul
@@ -167,6 +156,21 @@ function Library() {
                 </li>
               ))}
           </ul>
+
+          {canLoadMore && (
+            <div className="mt-10 flex justify-center">
+              <button
+                type="button"
+                onClick={() => setLimit((l) => l + PAGE_SIZE)}
+                disabled={isStale}
+                className="btn-primary island-shell px-6 py-3"
+              >
+                {isStale
+                  ? 'Loading…'
+                  : `Load more (${apiBooks.length} of ${total})`}
+              </button>
+            </div>
+          )}
         </section>
       </main>
     </div>

@@ -1,22 +1,22 @@
 import { createRouter as createTanStackRouter } from '@tanstack/react-router'
+import { QueryClient } from '@tanstack/react-query'
 import { routeTree } from './routeTree.gen'
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 
-export function getRouter() {
-  const queryClient = new QueryClient()
-  const router = createTanStackRouter({
-    routeTree,
-    scrollRestoration: true,
-    defaultPreload: 'intent',
-    defaultPreloadStaleTime: 0,
-    context: { queryClient },
-  })
+// Single shared instances for the whole app. `main.tsx` wires these into the
+// providers; the router exposes `queryClient` on its context so route loaders
+// can prefetch.
+export const queryClient = new QueryClient()
 
-  return router
-}
+export const router = createTanStackRouter({
+  routeTree,
+  scrollRestoration: true,
+  defaultPreload: 'intent',
+  defaultPreloadStaleTime: 0,
+  context: { queryClient },
+})
 
 declare module '@tanstack/react-router' {
   interface Register {
-    router: ReturnType<typeof getRouter>
+    router: typeof router
   }
 }

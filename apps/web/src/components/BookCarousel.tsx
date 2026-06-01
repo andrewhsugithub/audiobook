@@ -1,6 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
 import { Link } from '@tanstack/react-router'
-import { createStarString } from '../utils/createStarString'
 import BookCard from './BookCard'
 
 type Props = {
@@ -14,7 +13,7 @@ export default function BookCarousel({
   bookIds,
   linkTo = '/library',
 }: Props) {
-  const scrollRef = useRef<HTMLDivElement>(null)
+  const scrollRef = useRef<HTMLUListElement>(null)
   const [canScrollLeft, setCanScrollLeft] = useState(false)
   const [canScrollRight, setCanScrollRight] = useState(true)
 
@@ -55,8 +54,8 @@ export default function BookCarousel({
       left: direction === 'left' ? -scrollAmount : scrollAmount,
       behavior: 'smooth',
     })
-
-    setTimeout(updateScrollButtons, 350)
+    // The container's 'scroll' listener (see useEffect) keeps the button
+    // enabled/disabled state in sync as the smooth scroll progresses.
   }
 
   const arrowClass = (disabled: boolean) =>
@@ -72,19 +71,23 @@ export default function BookCarousel({
 
         <div className="flex gap-3">
           <button
+            type="button"
             onClick={() => scroll('left')}
             disabled={!canScrollLeft}
+            aria-label={`Scroll ${title} left`}
             className={arrowClass(!canScrollLeft)}
           >
-            ‹
+            <span aria-hidden="true">‹</span>
           </button>
 
           <button
+            type="button"
             onClick={() => scroll('right')}
             disabled={!canScrollRight}
+            aria-label={`Scroll ${title} right`}
             className={arrowClass(!canScrollRight)}
           >
-            ›
+            <span aria-hidden="true">›</span>
           </button>
 
           <Link to={linkTo} search={{ title }} className="nav-link">
@@ -94,8 +97,10 @@ export default function BookCarousel({
       </div>
 
       {/* Carousel */}
-      <div
+      <ul
         ref={scrollRef}
+        role="region"
+        aria-label={`${title} audiobooks`}
         className="flex gap-15 overflow-x-auto px-6 pb-6 pt-2 scroll-smooth no-scrollbar list-none"
       >
         {bookIds.map((bookId) => (
@@ -105,39 +110,8 @@ export default function BookCarousel({
             libraryTitle={title || 'Library'}
             variant="carousel"
           />
-          // <div key={book.id}>
-          //   <Link
-          //     to="/books/$bookId"
-          //     params={{
-          //       bookId: String(book.id),
-          //     }}
-          //     search={{ title }}
-          //     className="block"
-          //   >
-          //     <div className="relative overflow-hidden rounded-[12px] shadow-[0_18px_35px_rgba(0,0,0,0.22)] transition-all duration-300 hover:scale-[1.03]">
-          //       <div className="aspect-[2/3] w-[220px] overflow-hidden">
-          //         <img
-          //           src={book.thumbnail}
-          //           alt={book.title}
-          //           className="h-full w-full object-cover"
-          //         />
-          //       </div>
-          //     </div>
-          //     <h3 className="pt-4 line-clamp-1 text-lg font-bold overflow-hidden text-ellipsis transition-all duration-300 hover:opacity-80">
-          //       {book.title}
-          //     </h3>
-          //   </Link>
-          //   <small className="block pt-2 uppercase opacity-70 text-xs">
-          //     {book.authors.join(', ')}
-          //   </small>
-          //   <span className="block pt-3 text-[0.6rem]">
-          //     {book.averageRating
-          //       ? createStarString(book.averageRating)
-          //       : 'No reviews'}
-          //   </span>
-          // </div>
         ))}
-      </div>
+      </ul>
     </div>
   )
 }

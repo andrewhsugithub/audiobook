@@ -4,29 +4,33 @@ import { useQueryClient } from '@tanstack/react-query'
 
 import Rating from '../components/Rating'
 import Header from '../components/Header'
-import AudioPlayer from '../components/AudioPlayer'
 import { HlsAudioPlayer } from '../components/HlsAudio'
 import { useHlsStream } from '../hooks/useHlsStream'
 import { useAudiobookInfo } from '../hooks/useAudiobookInfo'
 import { UploadForm } from '../components/UploadForm'
+import { API_BASE_URL as BASE_URL } from '../utils/api'
+import { CURRENT_USER_ID, IS_ADMIN } from '../utils/auth'
+import { addToMyBooks, isInMyBooks } from '../utils/myBooks'
+import { useToast } from '../components/Toast'
 
 export const Route = createFileRoute('/books/$bookId')({
+  head: ({ params }) => ({
+    meta: [{ title: `Audiobook · ${params.bookId}` }],
+  }),
   component: BookComponent,
 })
 
-const BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8787'
-
 function BookComponent() {
   const queryClient = useQueryClient()
+  const toast = useToast()
   const { title } = Route.useSearch() as { title?: string }
   const bookId = Route.useParams().bookId
-  const isAdmin = true // TODO: wire to real auth
-  const userId = 'd6c5a7cc-2aa3-4fd7-e2d9-1ff91a3b254d' // hardcoded for testing, replace with real user context
+  const isAdmin = IS_ADMIN
+  const userId = CURRENT_USER_ID
 
   const [isEditing, setIsEditing] = useState(false)
   const [isSaving, setIsSaving] = useState(false)
   const [saveError, setSaveError] = useState<string | null>(null)
-  const [saveSuccess, setSaveSuccess] = useState(false)
 
   // Cover image editing state
   const [coverFile, setCoverFile] = useState<File | null>(null)
@@ -112,19 +116,22 @@ function BookComponent() {
         throw new Error(`Server error ${res.status}: ${errBody}`)
       }
 
-      // Force refresh book data so the UI reflects changes immediately
+      // Force refresh book data so the UI reflects changes immediately.
+      // Key must match audiobookInfoQuery in utils/queries.ts.
       await queryClient.invalidateQueries({
-        queryKey: ['audiobookInfo', bookId],
+        queryKey: ['audiobook-info', bookId],
       })
 
       setIsEditing(false)
       setCoverFile(null)
       setCoverPreview(null)
+      toast.success('Book details saved.')
     } catch (err: any) {
       console.error('Error updating metadata', err)
-      setSaveError(
-        err?.message || 'Failed to connect to the server. Is it running?',
-      )
+      const message =
+        err?.message || 'Failed to connect to the server. Is it running?'
+      setSaveError(message)
+      toast.error(message)
     } finally {
       setIsSaving(false)
     }
@@ -135,7 +142,6 @@ function BookComponent() {
     isLoading: isInfoLoading,
     isError: isInfoError,
     error: infoError,
-    refetch: refetchBook,
   } = useAudiobookInfo(bookId)
 
   const {
@@ -153,37 +159,26 @@ function BookComponent() {
 
   const audioURL = `${BASE_URL}/audiobook/${bookId}/master.m3u8`
 
-  const savedBooks = JSON.parse(localStorage.getItem('myBooks') || '[]')
-
   const [isInLibrary, setIsInLibrary] = useState(false)
 
   useEffect(() => {
-    const savedBooks = JSON.parse(localStorage.getItem('myBooks') || '[]')
-
-    const exists = savedBooks.some(
-      (item: any) => String(item.id) === String(bookId),
-    )
-
-    setIsInLibrary(exists)
+    setIsInLibrary(isInMyBooks(bookId))
   }, [bookId])
 
-  // Refetch after successful save so UI reflects changes
-  useEffect(() => {
-    if (saveSuccess) {
-      refetchBook()
-    }
-  }, [saveSuccess])
-
   const addToMyLibrary = () => {
-    if (isInLibrary) return
+    if (isInLibrary || !book) return
 
-    if (!book) return
-
-    const savedBooks = JSON.parse(localStorage.getItem('myBooks') || '[]')
-
-    localStorage.setItem('myBooks', JSON.stringify([...savedBooks, book]))
+    addToMyBooks({
+      id: book.id,
+      title: book.title,
+      author: book.author,
+      coverUrl: book.coverUrl,
+      ratings: book.ratings ?? 0,
+      description: book.description,
+    })
 
     setIsInLibrary(true)
+    toast.success('Added to your library.')
   }
 
   if (isInfoError) {
