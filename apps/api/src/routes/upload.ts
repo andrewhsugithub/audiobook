@@ -255,8 +255,22 @@ app.post("/complete", async (c) => {
     return c.json({ error: "Upload already completed or aborted" }, 409);
   }
 
+  // Client and route speak camelCase {partNumber, etag}, but the storage
+  // providers (and the MultipartPart contract) expect S3-style {PartNumber,
+  // ETag}. Normalize here so the S3 SDK and the R2 mapper read real values
+  // instead of undefined — otherwise CompleteMultipartUpload always fails.
+  const normalizedParts = parts.map((p) => ({
+    PartNumber: p.partNumber,
+    ETag: p.etag,
+  }));
+
   try {
-    await bucket.completeMultipartUpload(bucketName, fileKey, uploadId, parts);
+    await bucket.completeMultipartUpload(
+      bucketName,
+      fileKey,
+      uploadId,
+      normalizedParts,
+    );
 
     await db
       .update(audiobooks)

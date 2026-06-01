@@ -31,13 +31,16 @@ app.use(
   "/*",
   cors({
     origin: (origin) => (ALLOWED_ORIGINS.includes(origin) ? origin : null),
-    allowMethods: ["GET", "OPTIONS", "POST", "PATCH"],
+    allowMethods: ["GET", "OPTIONS", "POST", "PUT", "PATCH"],
     allowHeaders: ["Range", "Content-Type", "If-None-Match"],
     exposeHeaders: [
       "Content-Length",
       "Content-Range",
       "Accept-Ranges",
       "X-Cache-Status",
+      // Local-dev multipart: the browser reads the part ETag from the
+      // /local-upload-part response to build the completion manifest.
+      "ETag",
     ],
     credentials: true,
     maxAge: 86400, // Cache preflight flags for 24h
@@ -58,6 +61,72 @@ app.get(
 app.route("/audiobook", audiobook);
 app.route("/upload", upload);
 app.route("/cover", cover);
+
+// ── Local-dev storage shim ──────────────────────────────────────────────────
+// In local / r2-native mode there is no real object store to presign against,
+// so R2NativeStorageProvider hands the client mock URLs that point back here
+// (see packages/storage/src/provider.ts). These routes perform the actual R2
+// multipart part-upload and object download against the Worker's R2 bindings.
+// In S3/Supabase mode the client talks to the object store directly and these
+// routes are never hit. We read the binding straight off c.env by name instead
+// of going through the storage abstraction: R2NativeStorageProvider relies on
+// module-level bindings that are never populated, and per-request R2 access
+// belongs on c.env, not in shared global state.
+app.put("/local-upload-part", async (c) => {
+  const bucketName = c.req.query("bucket");
+  const key = c.req.query("key");
+  const uploadId = c.req.query("uploadId");
+  const partNumber = Number(c.req.query("partNumber"));
+
+  if (!bucketName || !key || !uploadId || !Number.isInteger(partNumber)) {
+    return c.json(
+      { error: "Missing/invalid bucket, key, uploadId, or partNumber" },
+      400,
+    );
+  }
+
+  const bucket = (c.env as unknown as Record<string, any>)[bucketName];
+  if (!bucket?.resumeMultipartUpload) {
+    return c.json({ error: `R2 binding not found for bucket: ${bucketName}` }, 500);
+  }
+
+  try {
+    const upload = await bucket.resumeMultipartUpload(key, uploadId);
+    const body = await c.req.arrayBuffer();
+    const uploaded = await upload.uploadPart(partNumber, body);
+
+    // Client reads ETag to assemble the completion manifest (it strips quotes).
+    return new Response(null, { status: 200, headers: { ETag: uploaded.etag } });
+  } catch (error: any) {
+    console.error(`[local-upload-part] part ${partNumber} failed:`, error);
+    return c.json({ error: `Part upload failed: ${error.message}` }, 500);
+  }
+});
+
+app.get("/local-download", async (c) => {
+  const bucketName = c.req.query("bucket");
+  const key = c.req.query("key");
+
+  if (!bucketName || !key) {
+    return c.json({ error: "Missing bucket or key" }, 400);
+  }
+
+  const bucket = (c.env as unknown as Record<string, any>)[bucketName];
+  if (!bucket?.get) {
+    return c.json({ error: `R2 binding not found for bucket: ${bucketName}` }, 500);
+  }
+
+  const obj = await bucket.get(key);
+  if (!obj) return c.json({ error: "Object not found" }, 404);
+
+  return new Response(obj.body, {
+    status: 200,
+    headers: {
+      "Content-Type":
+        obj.httpMetadata?.contentType ?? "application/octet-stream",
+    },
+  });
+});
 
 app.get(
   "/openapi.json",
