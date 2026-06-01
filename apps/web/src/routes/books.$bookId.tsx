@@ -445,6 +445,13 @@ function BookComponent() {
                   <br />
                   Please provide content to process.
                 </div>
+              ) : book?.status === 'failed' ? (
+                <div className="text-sm text-red-400 p-3 bg-red-500/10 rounded-lg border border-red-500/20">
+                  ❌ This audiobook failed to process.{' '}
+                  {book?.errorMessage
+                    ? `Error: ${book.errorMessage}`
+                    : 'Please try re-uploading the content.'}
+                </div>
               ) : (
                 <div className="text-sm text-yellow-400 p-3 bg-yellow-500/10 rounded-lg border border-yellow-500/20">
                   ⚠️ This audiobook is still being processed. Check back later!
