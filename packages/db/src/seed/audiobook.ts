@@ -29,7 +29,7 @@ export async function audiobookSeed() {
         // Uniformly distribute books across our generated real users
         userId: f.valuesFromArray({ values: liveUsers.map((u) => u.id) }),
 
-        title: f.valuesFromArray({ values: bookTitles }),
+        title: f.valuesFromArray({ values: bookTitles, isUnique: true }),
         author: f.fullName({ isUnique: true }),
         description: f.loremIpsum({ sentencesCount: randomInt(2, 15) }),
         visibility: f.valuesFromArray({ values: ["public"] }),
