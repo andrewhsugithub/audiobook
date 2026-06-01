@@ -21,3 +21,4 @@ voices/
 *.pem
 
 test*
+.claude/*

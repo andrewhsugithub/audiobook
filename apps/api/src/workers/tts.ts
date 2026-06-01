@@ -68,13 +68,19 @@ export async function handleTTSQueue(
 
       const {
         content,
+        emotionTag,
         voiceBucketName,
         voiceFileKey,
         externalVoiceId,
         providerMetadata,
       } = result;
 
-      const voiceId = externalVoiceId ?? "a167e0f3-df7e-4d52-a9c3-f949145efdab";
+      if (!externalVoiceId) {
+        throw new Error(
+          `[tts queue] Segment ${segmentId} has no resolved voice (assignedVoiceId missing or stale).`,
+        );
+      }
+
       const metadata = providerMetadata as any;
       if (voiceBucketName && voiceFileKey) {
         console.log(
@@ -82,13 +88,22 @@ export async function handleTTSQueue(
         );
       } else {
         console.log(
-          `[tts queue] Using voice ID ${voiceId} and provider metadata ${JSON.stringify(metadata)} for segment ${segmentId}.`,
+          `[tts queue] Using voice ID ${externalVoiceId} emotion ${emotionTag} for segment ${segmentId}.`,
         );
       }
 
       //! note that tts outputs .wav -> stitch everything together into one .wav -> use ffmpeg to convert into hls
       // should build the content according to voiceId table, some may need [emotion]content, some may need [speaker][emotion]content or even ssml tags, etc. and pass the appropriate voice parameters to the TTS API
       // https://docs.cartesia.ai/api-reference/tts/bytes
+      const baseGenerationConfig = metadata?.generation_config ?? {
+        speed: 1,
+        volume: 1,
+      };
+      const generationConfig =
+        emotionTag && emotionTag !== "neutral"
+          ? { ...baseGenerationConfig, emotion: emotionTag }
+          : baseGenerationConfig;
+
       const response = await fetch(env.TTS_URL, {
         method: "POST",
         headers: {
@@ -101,7 +116,7 @@ export async function handleTTSQueue(
           transcript: content, // content without speaker/emotion tags
           voice: {
             mode: "id",
-            id: externalVoiceId!,
+            id: externalVoiceId,
           },
           output_format: metadata?.output_format || {
             container: "wav",
@@ -109,11 +124,7 @@ export async function handleTTSQueue(
             sample_rate: 44100,
           },
           language: "en",
-          generation_config: metadata?.generation_config || {
-            speed: 1,
-            volume: 1,
-            // emotion: emotionTag, // use ssml tags instead
-          },
+          generation_config: generationConfig,
         }),
       });
       console.log(
