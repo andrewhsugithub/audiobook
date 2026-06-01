@@ -3,19 +3,19 @@
 Cloudflare Workers + Supabase + Cartesia pipeline that turns uploaded
 text/PDFs into multi-voice audio. Monorepo (pnpm workspaces):
 
-| Path | What it is |
-| --- | --- |
-| `apps/api` | Hono on Cloudflare Workers — HTTP routes + queue consumers |
-| `apps/web` | Vite + React frontend (not yet wired to `/upload`) |
-| `packages/db` | Drizzle schema, migrations, seeds |
-| `packages/storage` | S3/R2 abstraction used by the Worker |
-| `packages/tts` | Optional local Python TTS server (FastAPI) |
-| `packages/shared-libs` | Cross-package env schema, types |
+| Path                   | What it is                                                 |
+| ---------------------- | ---------------------------------------------------------- |
+| `apps/api`             | Hono on Cloudflare Workers — HTTP routes + queue consumers |
+| `apps/web`             | Vite + React frontend (not yet wired to `/upload`)         |
+| `packages/db`          | Drizzle schema, migrations, seeds                          |
+| `packages/storage`     | S3/R2 abstraction used by the Worker                       |
+| `packages/tts`         | Optional local Python TTS server (FastAPI)                 |
+| `packages/shared-libs` | Cross-package env schema, types                            |
 
 The generation pipeline:
 
 ```
-upload → parser → chunker → tagging → voice-mapping → tts → hls (TODO)
+upload → parser → chunker → tagging → voice-mapping → tts → hls
 ```
 
 Details on each stage live in
@@ -72,7 +72,7 @@ the seed scripts all read from it. The schema is validated by Zod in
    `CLOUDFLARE_HYPERDRIVE_LOCAL_CONNECTION_STRING_HYPERDRIVE` in `.env`
    (they must match — Hyperdrive uses the same string locally).
 3. **Storage buckets** — Storage → New bucket. Create three:
-   - `my-audiobook-public-dev` *(public)*
+   - `my-audiobook-public-dev` _(public)_
    - `my-audiobook-media-dev`
    - `my-audiobook-raw-uploads-dev`
 4. **S3 credentials for Storage** — Project Settings → Storage → S3
@@ -126,7 +126,7 @@ Take the returned id and paste it into **both**:
 
 ```bash
 pnpm db:push     # apply Drizzle schema to Supabase Postgres
-pnpm db:seed     # ⚠️ DESTRUCTIVE: resets users + voices, reseeds voices
+pnpm db:seed     # ⚠️ DESTRUCTIVE: resets users + voices, seeds voices, users, and audiobooks
 ```
 
 `pnpm db:seed` prompts Y/N before each reset. **It wipes the `users` and
@@ -145,12 +145,13 @@ manually via Supabase's Table Editor.
 ```bash
 pnpm api:typegen   # generate Cloudflare.Env types (once + after wrangler edits)
 pnpm api:dev       # wrangler dev on http://localhost:8787
+pnpm --filter @audiobook/web dev # frontend on :3000
 ```
 
 Optional, in separate terminals:
 
 ```bash
-pnpm --filter @audiobook/web dev               # frontend on :3000 (not yet wired to /upload)
+# if want to run a local TTS server instead of Cartesia
 cd packages/tts && uv sync && \
   uv run uvicorn server:app --port 7777        # local TTS on :7777
 ```
