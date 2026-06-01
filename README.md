@@ -1,162 +1,231 @@
 # Audiobook
 
-## Requirements
+Cloudflare Workers + Supabase + Cartesia pipeline that turns uploaded
+text/PDFs into multi-voice audio. Monorepo (pnpm workspaces):
 
-1. [nvm](https://github.com/nvm-sh/nvm)
-2. [pnpm](https://pnpm.io/installation)
-3. [Python](https://www.python.org/downloads/)
-4. [uv](https://docs.astral.sh/uv/getting-started/installation/)
-5. [cloudflare](https://dash.cloudflare.com/), create account
-6. [supabase](https://supabase.com/dashboard/projects), create account and create a project of any name and add 3 buckets in the storage section: `my-audiobook-public-dev`(make public), `my-audiobook-media-dev`, `my-audiobook-raw-uploads-dev`
-7. [sonic 3.5](https://docs.cartesia.ai/api-reference/tts/bytes) create an api key (or any TTS model of your choice, just make sure to update the TTS worker code accordingly to work with the TTS API you choose)
-<details>
-    <summary>Old, changed to cloudflare and supabsse</summary>
+| Path | What it is |
+| --- | --- |
+| `apps/api` | Hono on Cloudflare Workers — HTTP routes + queue consumers |
+| `apps/web` | Vite + React frontend (not yet wired to `/upload`) |
+| `packages/db` | Drizzle schema, migrations, seeds |
+| `packages/storage` | S3/R2 abstraction used by the Worker |
+| `packages/tts` | Optional local Python TTS server (FastAPI) |
+| `packages/shared-libs` | Cross-package env schema, types |
 
-```markdown
-8. [Docker](https://www.docker.com/)
-9. [LocalStack](https://docs.localstack.cloud/getting-started/installation/) (for local S3 testing, optional if you have access to a real S3 bucket)
-   > get pro account using github student pack [here](https://app.localstack.cloud/auth/sso/public/github?plan=student&_gl=1*1scp05j*_ga*MjA2ODY1NTk4Mi4xNzc2MTk2MjYy*_ga_4G82Z1TR2R*czE3NzcyNzc5MDEkbzYkZzAkdDE3NzcyNzc5MDEkajYwJGwwJGgwJGRXeTVFY21OczFDSTRiMkkxSlM0dko2RU5kcGcwNkhmMUZn)
-10. [Terraform](https://developer.hashicorp.com/terraform/install)
+The generation pipeline:
+
+```
+upload → parser → chunker → tagging → voice-mapping → tts → hls (TODO)
 ```
 
-  </details>
+Details on each stage live in
+[`.claude/skills/audiobook/`](.claude/skills/audiobook/SKILL.md).
 
-## Setup Instructions
+---
 
-1. Copy the example environment file first, paste your credentials in `.env`:
+## 1. Prerequisites
+
+**Local tooling**
+
+- [`nvm`](https://github.com/nvm-sh/nvm) — Node `v24.14.1` (matches
+  [`.nvmrc`](.nvmrc)); pnpm needs ≥22.13.
+- [`pnpm`](https://pnpm.io/installation)
+- [`uv`](https://docs.astral.sh/uv/getting-started/installation/) +
+  [Python](https://www.python.org/downloads/) — **only** if you plan to
+  run the local TTS server in `packages/tts`. Skip for the default
+  Cartesia path.
+
+**Cloud accounts**
+
+- [Cloudflare](https://dash.cloudflare.com/) — Workers, Queues, Workers
+  AI, Hyperdrive (R2 optional; Supabase is the tested storage path).
+- [Supabase](https://supabase.com/dashboard/projects) — Postgres + Storage.
+- [Cartesia](https://docs.cartesia.ai/api-reference/tts/bytes) — TTS API
+  key. (Swap for another provider by editing
+  [`apps/api/src/workers/tts.ts`](apps/api/src/workers/tts.ts).)
+
+> The historical LocalStack/Docker/Terraform path is preserved at the
+> bottom of this file; ignore it unless you're deliberately reviving it.
+
+---
+
+## 2. One-time setup
+
+### 2.1 Clone, env, install
 
 ```bash
-cp .env.example .env
+nvm use                # picks up .nvmrc
+cp .env.example .env   # fill in real values as you go
+pnpm i                 # installs every workspace from the root
 ```
 
-2. Install packages in the project root:
+`.env` is the one and only env file — `wrangler dev`, drizzle-kit, and
+the seed scripts all read from it. The schema is validated by Zod in
+[`packages/shared-libs/schema/env.ts`](packages/shared-libs/schema/env.ts).
 
-```bash
-pnpm i
+### 2.2 Supabase: database + storage
+
+1. Create a project (any region).
+2. **Database connection string:** Project Settings → Database →
+   "Connection string" → **URI** tab. Use the **session pooler** (port
+   `5432`) connection string. Paste it as both `DATABASE_URL` and
+   `CLOUDFLARE_HYPERDRIVE_LOCAL_CONNECTION_STRING_HYPERDRIVE` in `.env`
+   (they must match — Hyperdrive uses the same string locally).
+3. **Storage buckets** — Storage → New bucket. Create three:
+   - `my-audiobook-public-dev` *(public)*
+   - `my-audiobook-media-dev`
+   - `my-audiobook-raw-uploads-dev`
+4. **S3 credentials for Storage** — Project Settings → Storage → S3
+   access keys → "New access key". Paste:
+   - `S3_ENDPOINT` = `https://<project-ref>.storage.supabase.co/storage/v1/s3`
+   - `S3_ACCESS_KEY_ID`, `S3_SECRET_ACCESS_KEY`
+   - `SUPABASE_PROJECT_ID` = `<project-ref>`
+   - Leave `STORAGE_PROVIDER=supabase`.
+
+### 2.3 Cartesia (or your TTS provider)
+
+```dotenv
+TTS_URL=https://api.cartesia.ai/tts/bytes
+TTS_API_KEY=<your key>
 ```
 
-If use third party TTS API, skip to step 5:
-
-3. Start TTS local server (currently still in progress, so better just use third party TTS API for now):
+### 2.4 Cloudflare: queues, Hyperdrive, login
 
 ```bash
-cd packages/tts
-uv sync
-```
-
-See [packages/tts/README.md](packages/tts/README.md) for more information.
-
-4. Start the TTS server:
-
-```bash
-cd packages/tts
-uv run uvicorn server:app --port 7777
-```
-
-5. Run the database migrations:
-
-```bash
-cd packages/db
-npx drizzle-kit push
-pnpm seed
-
-# or in root
-pnpm db:push
-pnpm db:seed
-```
-
-6. Create the Cloudflare Hyperdrive KV namespace and update the `.env` with the connection string:
-
-```bash
-cd apps/api
 npx wrangler login
-npx wrangler hyperdrive create hyperdrive --connection-string=<your-db-connection-string> --env-file ../../.env
 ```
 
-paste your db connection string in the `CLOUDFLARE_HYPERDRIVE_LOCAL_CONNECTION_STRING_HYPERDRIVE` variable in the `.env` file
-and paste the id in `apps/api/wrangler.jsonc` and `.env`'s `HYPERDRIVE_ID` variable:
+**Create the six pipeline queues** (Worker can't start without them):
 
-```json
-"hyperdrive": [
-    {
-      "binding": "HYPERDRIVE",
-      "id": <YOUR_HYPERDRIVE_ID>,
-    },
-  ],
+```bash
+for q in audiobook-parser audiobook-chunking audiobook-tagging \
+         audiobook-voice-mapping audiobook-tts audiobook-hls; do
+  npx wrangler queues create "$q"
+done
 ```
 
-7. Create a user in the database for testing:
-
-Go to supabase dashboard, go to Table editor, find the `users` table, press insert row.
-Copy the user id and put it in the request body when testing the API routes.
-
-8. Start wrangler server:
+**Create the Hyperdrive binding** (from `apps/api` so the helper writes
+into the right `.env`):
 
 ```bash
 cd apps/api
-pnpm cf-typegen
-pnpm dev
-
-# or in root
-pnpm api:typegen
-pnpm api:dev
+npx wrangler hyperdrive create hyperdrive \
+  --connection-string="$DATABASE_URL" --env-file ../../.env
+cd -
 ```
 
-9. Test with curl or any API testing tool:
+Take the returned id and paste it into **both**:
+
+- `.env` → `HYPERDRIVE_ID=<id>`
+- [`apps/api/wrangler.jsonc`](apps/api/wrangler.jsonc) → `hyperdrive[0].id`
+
+> Edit `wrangler.jsonc` later? Re-run `pnpm api:typegen` afterwards or
+> `Cloudflare.Env` will be stale and the Worker won't compile.
+
+### 2.5 Database schema + seed
+
+```bash
+pnpm db:push     # apply Drizzle schema to Supabase Postgres
+pnpm db:seed     # ⚠️ DESTRUCTIVE: resets users + voices, reseeds voices
+```
+
+`pnpm db:seed` prompts Y/N before each reset. **It wipes the `users` and
+`voices` tables**, so only run it on a fresh DB or in dev. If you only
+want the voice catalog, run `pnpm --filter @audiobook/db seed:voices`.
+
+You must have **at least one Cartesia voice** in `voices` for the
+pipeline to assign per-character voices, and **at least one user row**
+to test uploads. The seed gives you both; if you skip it, insert a user
+manually via Supabase's Table Editor.
+
+---
+
+## 3. Run it
+
+```bash
+pnpm api:typegen   # generate Cloudflare.Env types (once + after wrangler edits)
+pnpm api:dev       # wrangler dev on http://localhost:8787
+```
+
+Optional, in separate terminals:
+
+```bash
+pnpm --filter @audiobook/web dev               # frontend on :3000 (not yet wired to /upload)
+cd packages/tts && uv sync && \
+  uv run uvicorn server:app --port 7777        # local TTS on :7777
+```
+
+API docs (Swagger UI): <http://localhost:8787/docs>.
+
+---
+
+## 4. Smoke-test the pipeline
+
+Grab a user id from the `users` table in Supabase, then:
 
 ```bash
 curl -X POST http://localhost:8787/upload \
   -H "Content-Type: application/json" \
   -d '{
-    "userId": "3b23d30c-f359-42bd-0656-eaf4561a9cd0",
-    "title": "My Test Local Story",
-    "text": "\"I just won the lottery!\" exclaimed Sarah, her eyes wide with disbelief as she held the winning ticket in her trembling hands."
+    "userId": "<USER_ID_FROM_DB>",
+    "title": "Smoke test",
+    "text": "\"We must hurry,\" said Hermione. Ron groaned. \"Five more minutes.\" The corridor was empty."
   }'
-  "text": "Today is a gloomy night, rain patters against the window as I sit by the fireplace, sipping on a warm cup of tea. The flickering flames cast dancing shadows on the walls, creating a cozy ambiance that contrasts with the storm raging outside. Suddenly, a loud crash of thunder makes me jump, and I cannot help but feel a sense of unease creeping in."
-  "userId": "2f5363b9-8fc3-482a-da6b-2d605fb782f1",
 ```
 
-<details>
-    <summary>Old steps, changed to cloudflare and supabsse</summary>
-
-````markdown
-5. Start up the docker container for PostgreSQL and LocalStack (if using):
-
-```bash
-
-# remember to cd back to the project root if you're still in the tts package
-pnpm docker:start
+In the `wrangler dev` console you should see the message walk the chain:
 
 ```
-
-6. Run the terraform to setup S3 buckets:
-
-```bash
-# need to wait for localstack docker container to be up before running this
-cd ./infra/environments/dev
-openssl genrsa -out private_key.pem 2048
-openssl rsa -pubout -in private_key.pem -out public_key.pem
-terraform init -upgrade
-# terraform plan # optional, see what terraform will do before applying
-terraform apply -auto-approve # rerun this if u change the terraform files, it will update accordingly, see the terraform docs for more info
+[parser queue] …
+[chunking queue] …
+[tagging queue] …
+[voice-mapping queue] Mapped segment "We must hurry," … speaker: Hermione emotion: … voice: <uuid>
+[tts queue] ✓ Segment 0_0 …
 ```
 
-7. Start the application:
+In Supabase, check that `segments` rows have:
 
-```bash
-# remember to cd back to the project root if you're still in the tts package
-pnpm start
-```
-````
+- distinct `assigned_voice_id` per speaker,
+- non-`Neutral` `emotion_tag` for emoted lines,
+- `content` free of any `<emotion .../>` substring.
 
-</details>
+To hear the output, hit `GET http://localhost:8787/test_get_wav` (streams
+the first generated WAV) or fetch
+`audiobooks/<id>/segments/seg_<chunk>_<seg>.wav` from the
+`my-audiobook-media-dev` bucket directly.
+
+---
+
+## 5. Common issues
+
+- **`wrangler dev` fails binding a queue** — the queue doesn't exist in
+  your Cloudflare account yet. Re-run the `wrangler queues create` loop
+  in §2.4.
+- **`Cannot find type definition file for './worker-configuration.d.ts'`**
+  — run `pnpm api:typegen`.
+- **`invalid input value for enum audiobook_status`** in the Worker log
+  — your DB still has the old enum. Run `pnpm db:push`. (See
+  [data-model.md](.claude/skills/audiobook/reference/data-model.md).)
+- **Worker throws "No Cartesia voices available"** — `voices` table is
+  empty. Run `pnpm --filter @audiobook/db seed:voices`.
+- **Books never reach `completed`.** Expected — the HLS / stitching
+  stage isn't wired up yet. The pipeline currently stops at per-segment
+  WAVs.
+- **Frontend shows placeholder books.** `apps/web` isn't connected to
+  the project's `/upload` API yet; it points at an external demo.
+
+---
 
 ## Documentation
 
-- API documentation is available at [http://localhost:3000/docs](http://localhost:3000/docs) after starting the application.
-- TTS server API documentation is available at [http://localhost:7777/docs](http://localhost:7777/docs) after starting the TTS server.
+- API: <http://localhost:8787/docs> (Swagger UI via `hono-openapi`)
+- Local TTS server: <http://localhost:7777/docs>
+- Project skill (architecture, data model, voice flow, dev gotchas):
+  [`.claude/skills/audiobook/`](.claude/skills/audiobook/SKILL.md)
 
-### TODO
+---
+
+## TODO
 
 - [ ] fix/update upload in frontend to integrate with backend's upload api
 - [ ] provide a `completed` tag in frontend
@@ -171,3 +240,39 @@ pnpm start
 - [ ] refactor types in frontend and backend to be shared in a common package
 - [ ] (low priority) add a progress bar for the upload and TTS processing
 - [ ] (super low priority) need to seed voices db with system local voices
+
+Active work items downstream of recent PRs live in [todo.md](todo.md).
+
+---
+
+<details>
+<summary>Historical: LocalStack / Docker / Terraform path</summary>
+
+These steps predate the move to Cloudflare + Supabase. They are kept for
+reference only and are not maintained.
+
+**Extra prerequisites:**
+
+8. [Docker](https://www.docker.com/)
+9. [LocalStack](https://docs.localstack.cloud/getting-started/installation/) — pro account available via the GitHub Student Pack.
+10. [Terraform](https://developer.hashicorp.com/terraform/install)
+
+**Setup:**
+
+```bash
+# 1. Start Postgres + LocalStack
+pnpm docker:start
+
+# 2. Provision S3 buckets via Terraform
+cd ./infra/environments/dev
+openssl genrsa -out private_key.pem 2048
+openssl rsa -pubout -in private_key.pem -out public_key.pem
+terraform init -upgrade
+terraform apply -auto-approve
+
+# 3. Start the app
+cd ../../..
+pnpm start
+```
+
+</details>
