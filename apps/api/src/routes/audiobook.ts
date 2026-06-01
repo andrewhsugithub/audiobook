@@ -546,35 +546,102 @@ app.post("/:id/reupload", async (c) => {
   }
 
   console.log(
-    `[re-upload] Received re-upload request for audiobook ID: ${c.req.param("id")}`,
+    `[re-upload] Received re-upload request for audiobook ID: ${audiobookId}`,
   );
 
   const bucketName = c.env.RAW_BUCKET_NAME;
 
-  //  Direct text reupload
-  if (text && typeof text === "string") {
-    const textBytes = new TextEncoder().encode(text);
+  try {
+    // Direct text reupload
+    if (text && typeof text === "string") {
+      const textBytes = new TextEncoder().encode(text);
 
-    if (textBytes.length > MAX_FILE_SIZE_BYTES) {
-      return c.json({ error: "Text exceeds 50MB limit" }, 413);
+      if (textBytes.length > MAX_FILE_SIZE_BYTES) {
+        return c.json({ error: "Text exceeds 50MB limit" }, 413);
+      }
+
+      console.log(
+        `[re-upload] Direct text submission received for book upload. Bypassing multipart.`,
+      );
+
+      const generatedFileName = `${crypto.randomUUID().slice(0, 8)}.txt`;
+      const textFileKey = `raw-uploads/${userId}/${audiobookId}/${generatedFileName}`;
+
+      // Reset pipeline state
+      await db
+        .update(audiobooks)
+        .set({
+          status: "finished_upload",
+          rawFileName: generatedFileName,
+          rawFileSizeBytes: textBytes.length,
+          mimeType: "text/plain",
+          //? maybe clear HLS output key
+          errorMessage: null,
+        })
+        .where(eq(audiobooks.id, audiobookId));
+
+      await db.insert(assets).values({
+        audiobookId,
+        type: "raw_upload",
+        bucketName,
+        s3Key: textFileKey,
+        fileName: generatedFileName,
+        mimeType: "text/plain",
+        sizeBytes: textBytes.length,
+        uploadStatus: "ready_to_upload",
+      });
+
+      await bucket.putObject(bucketName, textFileKey, text, "text/plain");
+
+      await c.env.PARSER_QUEUE.send({
+        audiobookId,
+        userId,
+        s3FileKey: textFileKey,
+        fileName: generatedFileName,
+      } satisfies ParserJobData);
+
+      console.log(`[re-upload] Direct text upload for book ${audiobookId}`);
+
+      return c.json({
+        ok: true,
+        bookId: audiobookId,
+        status: "finished_upload",
+        strategy: "direct-write",
+      });
     }
 
-    console.log(
-      `[re-upload] Direct text submission received for book upload. Bypassing multipart.`,
+    // Multipart reupload
+    if (!fileName || !fileSizeBytes) {
+      return c.json({ error: "Missing fileName or fileSizeBytes" }, 400);
+    }
+
+    const mimeType = fileName.endsWith(".pdf")
+      ? "application/pdf"
+      : fileName.endsWith(".txt")
+        ? "text/plain"
+        : null;
+
+    if (!mimeType) {
+      return c.json({ error: "Only PDF and TXT files supported" }, 415);
+    }
+
+    const rawUploadKey = `raw-uploads/${userId}/${audiobookId}/${fileName}`;
+    const uploadId = await bucket.initiateMultipartUpload(
+      bucketName,
+      rawUploadKey,
+      mimeType,
     );
 
-    const generatedFileName = `${crypto.randomUUID().slice(0, 8)}.txt`;
-    const textFileKey = `raw-uploads/${userId}/${audiobookId}/${generatedFileName}`;
+    const uploadExpiresAt = new Date(Date.now() + UPLOAD_EXPIRY_SECONDS * 1000);
 
     // Reset pipeline state
     await db
       .update(audiobooks)
       .set({
-        status: "finished_upload",
-        rawFileName: generatedFileName,
-        rawFileSizeBytes: textBytes.length,
-        mimeType: "text/plain",
-        //? maybe clear HLS output key
+        status: "ready_to_upload",
+        rawFileName: fileName,
+        rawFileSizeBytes: fileSizeBytes,
+        mimeType,
         errorMessage: null,
       })
       .where(eq(audiobooks.id, audiobookId));
@@ -583,94 +650,57 @@ app.post("/:id/reupload", async (c) => {
       audiobookId,
       type: "raw_upload",
       bucketName,
-      s3Key: textFileKey,
-      fileName: generatedFileName,
-      mimeType: "text/plain",
-      sizeBytes: textBytes.length,
-      uploadStatus: "ready_to_upload",
+      s3Key: rawUploadKey,
+      fileName,
+      mimeType,
+      sizeBytes: fileSizeBytes,
+      uploadStatus: "pending_upload",
+      uploadId,
+      uploadExpiresAt,
     });
 
-    await bucket.putObject(bucketName, textFileKey, text, "text/plain");
-
-    await c.env.PARSER_QUEUE.send({
-      audiobookId,
-      userId,
-      s3FileKey: textFileKey,
-      fileName: generatedFileName,
-    } satisfies ParserJobData);
-
-    console.log(`[re-upload] Direct text upload for book ${audiobookId}`);
+    console.log(
+      `[re-upload] Initiated audiobook ID: ${audiobookId} for multipart re-upload.`,
+    );
 
     return c.json({
       ok: true,
       bookId: audiobookId,
-      status: "finished_upload",
-      strategy: "direct-write",
-    });
-  }
-
-  //  Multipart reupload
-  if (!fileName || !fileSizeBytes) {
-    return c.json({ error: "Missing fileName or fileSizeBytes" }, 400);
-  }
-
-  const mimeType = fileName.endsWith(".pdf")
-    ? "application/pdf"
-    : fileName.endsWith(".txt")
-      ? "text/plain"
-      : null;
-
-  if (!mimeType) {
-    return c.json({ error: "Only PDF and TXT files supported" }, 415);
-  }
-
-  const rawUploadKey = `raw-uploads/${userId}/${audiobookId}/${fileName}`;
-  const uploadId = await bucket.initiateMultipartUpload(
-    bucketName,
-    rawUploadKey,
-    mimeType,
-  );
-
-  const uploadExpiresAt = new Date(Date.now() + UPLOAD_EXPIRY_SECONDS * 1000);
-
-  // Reset pipeline state
-  await db
-    .update(audiobooks)
-    .set({
       status: "ready_to_upload",
-      rawFileName: fileName,
-      rawFileSizeBytes: fileSizeBytes,
-      mimeType,
-      errorMessage: null,
-    })
-    .where(eq(audiobooks.id, audiobookId));
+      strategy: "multipart",
+      uploadId,
+      fileKey: rawUploadKey,
+      expiresAt: uploadExpiresAt.toISOString(),
+    });
+  } catch (error: any) {
+    const errorMessage =
+      error?.message ||
+      "Unknown error occurred during re-upload initialization";
+    console.error(`[re-upload] Audiobook ${audiobookId}:`, error);
 
-  await db.insert(assets).values({
-    audiobookId,
-    type: "raw_upload",
-    bucketName,
-    s3Key: rawUploadKey,
-    fileName,
-    mimeType,
-    sizeBytes: fileSizeBytes,
-    uploadStatus: "pending_upload",
-    uploadId,
-    uploadExpiresAt,
-  });
+    try {
+      await db
+        .update(audiobooks)
+        .set({
+          status: "failed",
+          errorMessage: `Re-upload preparation failed: ${errorMessage}`,
+        })
+        .where(eq(audiobooks.id, audiobookId));
+    } catch (dbError) {
+      console.error(
+        "[re-upload] Failed to write failure state to Database:",
+        dbError,
+      );
+    }
 
-  console.log(
-    `[re-upload] Initiated audiobook ID: ${audiobookId} for multipart re-upload.`,
-  );
-
-  return c.json({
-    ok: true,
-    bookId: audiobookId,
-    status: "ready_to_upload",
-    strategy: "multipart",
-    uploadId,
-    fileKey: rawUploadKey,
-    expiresAt: uploadExpiresAt.toISOString(),
-  });
+    return c.json(
+      {
+        error: "Failed to initialize re-upload configuration workflow",
+        details: errorMessage,
+      },
+      500,
+    );
+  }
 });
 
 export default app;
