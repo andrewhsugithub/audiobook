@@ -38,9 +38,11 @@ export async function audiobookSeed() {
         // leave others as defaults or nulls
         status: f.default({ defaultValue: "initiated" }),
 
+        rawFileBucketName: f.default({ defaultValue: null }),
+        rawFileS3Key: f.default({ defaultValue: null }),
+        mimeType: f.default({ defaultValue: null }),
         coverBucketName: f.default({ defaultValue: null }),
         coverS3Key: f.default({ defaultValue: null }),
-
         chunksBucketName: f.default({ defaultValue: null }),
         chunksS3KeyPrefix: f.default({ defaultValue: null }),
 
