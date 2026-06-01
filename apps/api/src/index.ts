@@ -1,3 +1,15 @@
+import { DOMParser, Node as XMLDOMNode } from "@xmldom/xmldom";
+
+// @ts-ignore
+if (typeof globalThis.DOMParser === "undefined") {
+  (globalThis as any).DOMParser = DOMParser;
+}
+
+// @ts-ignore
+if (typeof globalThis.Node === "undefined") {
+  (globalThis as any).Node = XMLDOMNode;
+}
+
 import { Hono } from "hono";
 import { queue } from "./queue";
 import { openAPIRouteHandler } from "hono-openapi";
@@ -19,7 +31,7 @@ app.use(
   "/*",
   cors({
     origin: (origin) => (ALLOWED_ORIGINS.includes(origin) ? origin : null),
-    allowMethods: ["GET", "OPTIONS", "POST"],
+    allowMethods: ["GET", "OPTIONS", "POST", "PATCH"],
     allowHeaders: ["Range", "Content-Type", "If-None-Match"],
     exposeHeaders: [
       "Content-Length",
