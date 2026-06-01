@@ -1,7 +1,8 @@
-import { useState, useCallback, useRef } from 'react'
+import { useState, useCallback, useEffect, useRef } from 'react'
+import { API_BASE_URL as API_URL } from '../utils/api'
 
-const API_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8787'
 const CHUNK_SIZE = 10 * 1024 * 1024 // 10MB per part
+const PART_RETRIES = 3 // retry a failed part this many times before giving up
 
 export type UploadStatus =
   | 'idle'
@@ -29,6 +30,39 @@ interface PresignedUrlsResponse {
   presignedUrls: Array<{ partNumber: number; url: string }>
 }
 
+// Upload a single part, retrying transient failures with linear backoff.
+async function putPartWithRetry(
+  url: string,
+  chunk: Blob,
+  contentType: string,
+  signal: AbortSignal,
+  attempts = PART_RETRIES,
+): Promise<Response> {
+  let lastError: unknown
+  for (let attempt = 1; attempt <= attempts; attempt++) {
+    try {
+      const res = await fetch(url, {
+        method: 'PUT',
+        body: chunk,
+        headers: { 'Content-Type': contentType },
+        signal,
+      })
+      if (!res.ok) throw new Error(`status ${res.status}`)
+      return res
+    } catch (err) {
+      // Don't retry deliberate aborts.
+      if (signal.aborted) throw err
+      lastError = err
+      if (attempt < attempts) {
+        await new Promise((r) => setTimeout(r, 300 * attempt))
+      }
+    }
+  }
+  throw lastError instanceof Error
+    ? lastError
+    : new Error('Part upload failed after retries')
+}
+
 export function useMultipartUpload() {
   const [state, setState] = useState<UploadState>({
     status: 'idle',
@@ -44,6 +78,15 @@ export function useMultipartUpload() {
     fileKey: string
   } | null>(null)
 
+  // Cancels in-flight fetches (on user abort or unmount)
+  const controllerRef = useRef<AbortController | null>(null)
+
+  // Cancel any in-flight network on unmount to avoid leaks / state updates
+  // after the component is gone.
+  useEffect(() => {
+    return () => controllerRef.current?.abort()
+  }, [])
+
   const patch = (update: Partial<UploadState>) =>
     setState((prev) => ({ ...prev, ...update }))
 
@@ -56,10 +99,14 @@ export function useMultipartUpload() {
         title?: string
         author?: string
         description?: string
-        existingBookId?: string // 🎯 Added Optional Target Key
+        existingBookId?: string
       },
     ) => {
       patch({ status: 'initiating', progress: 0, error: null, bookId: null })
+
+      const controller = new AbortController()
+      controllerRef.current = controller
+      const { signal } = controller
 
       try {
         const targetUrl = metadata.existingBookId
@@ -69,6 +116,7 @@ export function useMultipartUpload() {
         const initiateRes = await fetch(targetUrl, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
+          signal,
           body: JSON.stringify({
             fileName: file.name,
             fileSizeBytes: file.size,
@@ -101,6 +149,7 @@ export function useMultipartUpload() {
         const urlsRes = await fetch(`${API_URL}/upload/get-presigned-urls`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
+          signal,
           body: JSON.stringify({ fileKey, uploadId, totalParts, bookId }),
         })
 
@@ -126,18 +175,12 @@ export function useMultipartUpload() {
               const end = Math.min(start + CHUNK_SIZE, file.size)
               const chunk = file.slice(start, end)
 
-              const partRes = await fetch(url, {
-                method: 'PUT',
-                body: chunk,
-                headers: {
-                  'Content-Type': file.type || 'application/octet-stream',
-                },
-              })
-
-              if (!partRes.ok)
-                throw new Error(
-                  `Part ${partNumber} upload failed: ${partRes.status}`,
-                )
+              const partRes = await putPartWithRetry(
+                url,
+                chunk,
+                file.type || 'application/octet-stream',
+                signal,
+              )
 
               // ETag is required for completing multipart upload
               const etag =
@@ -163,6 +206,7 @@ export function useMultipartUpload() {
         const completeRes = await fetch(`${API_URL}/upload/complete`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
+          signal,
           body: JSON.stringify({
             uploadId,
             fileKey,
@@ -181,6 +225,7 @@ export function useMultipartUpload() {
         }
 
         abortRef.current = null
+        controllerRef.current = null
         patch({ status: 'done', progress: 100 })
 
         return bookId
@@ -209,10 +254,13 @@ export function useMultipartUpload() {
         title?: string
         author?: string
         description?: string
-        existingBookId?: string // 🎯 Added Optional Target Key
+        existingBookId?: string
       },
     ) => {
       patch({ status: 'uploading', progress: 0, error: null, bookId: null })
+
+      const controller = new AbortController()
+      controllerRef.current = controller
 
       const targetUrl = metadata.existingBookId
         ? `${API_URL}/audiobook/${metadata.existingBookId}/reupload`
@@ -221,6 +269,7 @@ export function useMultipartUpload() {
       const res = await fetch(targetUrl, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        signal: controller.signal,
         body: JSON.stringify({ text, ...metadata }),
       })
 
@@ -232,6 +281,7 @@ export function useMultipartUpload() {
       }
 
       const data = await res.json()
+      controllerRef.current = null
       patch({ status: 'done', progress: 100, bookId: data.bookId })
       return data.bookId as string
     },
@@ -240,13 +290,18 @@ export function useMultipartUpload() {
 
   // Abort Upload
   const abort = useCallback(async () => {
-    if (!abortRef.current) return
-    await abortUpload(abortRef.current)
-    abortRef.current = null
+    controllerRef.current?.abort()
+    controllerRef.current = null
+    if (abortRef.current) {
+      await abortUpload(abortRef.current)
+      abortRef.current = null
+    }
     patch({ status: 'idle', progress: 0, error: null })
   }, [])
 
   const reset = useCallback(() => {
+    controllerRef.current?.abort()
+    controllerRef.current = null
     patch({ status: 'idle', progress: 0, error: null, bookId: null })
   }, [])
 

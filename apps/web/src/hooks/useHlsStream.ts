@@ -1,11 +1,11 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { API_BASE_URL as API_URL } from '../utils/api'
 
-const API_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8787'
-
-async function initializeStreamSession(bookId: string) {
+async function initializeStreamSession(bookId: string, signal?: AbortSignal) {
   const res = await fetch(`${API_URL}/audiobook/${bookId}/session`, {
     method: 'POST',
     credentials: 'include',
+    signal,
   })
 
   if (!res.ok) {
@@ -23,10 +23,11 @@ async function initializeStreamSession(bookId: string) {
   }>
 }
 
-async function refreshStreamSession(bookId: string) {
+async function refreshStreamSession(bookId: string, signal?: AbortSignal) {
   const res = await fetch(`${API_URL}/audiobook/${bookId}/refresh`, {
     method: 'POST',
     credentials: 'include',
+    signal,
   })
 
   if (!res.ok) {
@@ -56,21 +57,21 @@ export function useHlsStream(bookId: string, options: UseHlsStreamOptions) {
   return useQuery({
     queryKey,
     enabled: options.enabled,
-    queryFn: async () => {
+    queryFn: async ({ signal }) => {
       const existing = queryClient.getQueryData<{ refreshAt: string }>(queryKey)
 
       if (existing) {
         try {
           console.log('[session] Refreshing sliding window token...')
-          return await refreshStreamSession(bookId)
+          return await refreshStreamSession(bookId, signal)
         } catch (err) {
           console.warn('[session] Refresh failed, re-initializing...', err)
-          return await initializeStreamSession(bookId)
+          return await initializeStreamSession(bookId, signal)
         }
       }
 
       console.log('[session] Initializing new stream session...')
-      return await initializeStreamSession(bookId)
+      return await initializeStreamSession(bookId, signal)
     },
     staleTime: 1000 * 60 * 5,
     retry: 1, // retry once on failure before showing error

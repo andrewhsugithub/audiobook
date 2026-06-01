@@ -312,3 +312,49 @@ a {
 .no-scrollbar {
   scrollbar-width: none;
 }
+
+/* Shared form primitives — used by the upload form and the book edit form */
+.field-label {
+  display: block;
+  font-size: 0.7rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--sea-ink-soft);
+}
+
+.field-input {
+  width: 100%;
+  border-radius: 0.5rem;
+  border: 1px solid var(--line);
+  background: var(--surface);
+  padding: 0.625rem 0.75rem;
+  color: var(--sea-ink);
+  font-size: 0.875rem;
+  transition:
+    border-color 180ms ease,
+    background-color 180ms ease;
+}
+
+.field-input:focus {
+  outline: none;
+  border-color: var(--lagoon);
+  background: var(--surface-strong);
+}
+
+.btn-primary {
+  border-radius: 9999px;
+  font-weight: 600;
+  border: 1px solid var(--line);
+  background: linear-gradient(165deg, var(--surface-strong), var(--surface));
+  transition: transform 180ms ease;
+}
+
+.btn-primary:hover:not(:disabled) {
+  transform: scale(1.03);
+}
+
+.btn-primary:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}

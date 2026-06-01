@@ -1,6 +1,5 @@
-import { queryOptions, infiniteQueryOptions } from '@tanstack/react-query'
-
-const API_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8787'
+import { queryOptions } from '@tanstack/react-query'
+import { API_BASE_URL as API_URL } from './api'
 
 export interface AudiobookSummary {
   id: string
@@ -58,10 +57,10 @@ async function fetchAudiobookInfo(bookId: string): Promise<AudiobookInfo> {
   return res.json()
 }
 
-export const searchQuery = (query: string) =>
+export const searchQuery = (query: string, limit = 50) =>
   queryOptions({
-    queryKey: ['audiobook-search', query],
-    queryFn: () => searchAudiobooks(query),
+    queryKey: ['audiobook-search', query, limit],
+    queryFn: () => searchAudiobooks(query, limit),
     staleTime: 1000 * 30, // 30s — search results can change
     placeholderData: (prev) => prev, // keep previous results while fetching
   })

@@ -1,3 +1,4 @@
+import { memo } from 'react'
 import { Link } from '@tanstack/react-router'
 import { useAudiobookInfo } from '../hooks/useAudiobookInfo'
 
@@ -7,11 +8,7 @@ type Props = {
   variant?: 'library' | 'carousel'
 }
 
-export default function BookCard({
-  bookId,
-  libraryTitle,
-  variant = 'library',
-}: Props) {
+function BookCard({ bookId, libraryTitle, variant = 'library' }: Props) {
   const isCarousel = variant === 'carousel'
 
   const {
@@ -53,9 +50,6 @@ export default function BookCard({
 
         <div className="absolute right-0 top-0 z-10 h-full w-[4px] bg-gradient-to-l from-white/40 to-transparent" />
 
-        {/* light reflection */}
-        {/* <div className="absolute inset-0 z-20 bg-gradient-to-br from-white/25 via-transparent to-black/20" /> */}
-
         <div className="aspect-[2/3] w-full overflow-hidden">
           {isInfoLoading ? (
             <div className="animate-pulse text-xs opacity-40">
@@ -72,28 +66,27 @@ export default function BookCard({
       </Link>
       <h3 className="pt-4 text-[clamp(1rem,2.5vw,1.1rem)]/[1.2] font-bold overflow-hidden text-ellipsis">
         {isInfoLoading ? (
-          <span className="animate-pulse bg-white/10 rounded h-8 w-48 block"></span>
+          <span className="animate-pulse bg-white/10 rounded h-6 w-3/4 block"></span>
         ) : (
-          <a
-            href="#"
+          <Link
+            to="/books/$bookId"
+            params={{ bookId: String(bookId) }}
+            search={{ title: libraryTitle || 'Library' }}
             className="no-underline ease-in-out duration-150 transition-all"
           >
             {book?.title}
-          </a>
+          </Link>
         )}
       </h3>
       <small className="block pt-2 uppercase opacity-70 text-xs">
         {isInfoLoading ? (
-          <span className="animate-pulse bg-white/5 rounded h-5 w-24 block" />
+          <span className="animate-pulse bg-white/5 rounded h-4 w-1/2 block" />
         ) : (
           book?.author || 'Anonymous Author'
         )}
       </small>
-      {/* <span className="block pt-3 text-[0.6rem]">
-        {book.averageRating
-          ? createStarString(book.averageRating)
-          : 'No reviews'}
-      </span> */}
     </li>
   )
 }
+
+export default memo(BookCard)
