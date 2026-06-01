@@ -12,8 +12,36 @@ const app = new Hono<Env>();
 
 const UPLOAD_EXPIRY_SECONDS = 3600;
 const MAX_FILE_SIZE_BYTES = 50 * 1024 * 1024; // 50MB
-const ALLOWED_MIME_TYPES = ["application/pdf", "text/plain"];
-const MIN_PART_SIZE_BYTES = 5 * 1024 * 1024; // 5MB (S3/R2 minimum per part)
+const MIN_PART_SIZE_BYTES = 5 * 1024 * 1024; // 5MB S3/R2 minimum
+
+// Normalise whatever shape the client sends into what every provider expects
+function normalizeParts(
+  parts: Array<{
+    partNumber?: number;
+    PartNumber?: number;
+    etag?: string;
+    ETag?: string;
+  }>,
+) {
+  return parts
+    .map((p) => ({
+      PartNumber: p.PartNumber ?? p.partNumber,
+      ETag: p.ETag ?? p.etag,
+    }))
+    .filter(
+      (p): p is { PartNumber: number; ETag: string } =>
+        typeof p.PartNumber === "number" &&
+        typeof p.ETag === "string" &&
+        p.ETag.length > 0,
+    )
+    .sort((a, b) => a.PartNumber - b.PartNumber); // S3 requires ascending order
+}
+
+function getMimeType(fileName: string): string | null {
+  if (fileName.endsWith(".pdf")) return "application/pdf";
+  if (fileName.endsWith(".txt")) return "text/plain";
+  return null;
+}
 
 app.post("/", async (c) => {
   const bucket = storage.getInstance(c.env);
@@ -34,12 +62,10 @@ app.post("/", async (c) => {
   //  Direct text path
   if (text && typeof text === "string") {
     if (text.length > MAX_FILE_SIZE_BYTES) {
-      return c.json({ error: "Text content exceeds 100MB limit" }, 413);
+      return c.json({ error: "Text content exceeds 50MB limit" }, 413);
     }
 
-    console.log(
-      `[upload] Direct text submission received for book upload. Bypassing multipart.`,
-    );
+    console.log("[upload] Direct text submission — bypassing multipart.");
 
     const textBytes = new TextEncoder().encode(text);
     const generatedFileName = `${crypto.randomUUID().slice(0, 8)}.txt`;
@@ -58,9 +84,8 @@ app.post("/", async (c) => {
       })
       .returning({ id: audiobooks.id });
 
-    console.log(
-      `[upload] Created audiobook record with ID: ${bookId} for direct text upload.`,
-    );
+    console.log(`[upload] Created audiobook ${bookId} for direct text.`);
+
     const textFileKey = `raw-uploads/${userId}/${bookId}/${generatedFileName}`;
 
     await db.insert(assets).values({
@@ -83,7 +108,7 @@ app.post("/", async (c) => {
       fileName: generatedFileName,
     } satisfies ParserJobData);
 
-    console.log(`[upload] Direct text upload for book ${bookId}`);
+    console.log(`[upload] Direct text queued for book ${bookId}`);
 
     return c.json({
       bookId,
@@ -106,12 +131,7 @@ app.post("/", async (c) => {
     return c.json({ error: "File exceeds 50MB size limit" }, 413);
   }
 
-  const mimeType = fileName.endsWith(".pdf")
-    ? "application/pdf"
-    : fileName.endsWith(".txt")
-      ? "text/plain"
-      : null;
-
+  const mimeType = getMimeType(fileName);
   if (!mimeType) {
     return c.json({ error: "Only PDF and TXT files are supported" }, 415);
   }
@@ -130,9 +150,7 @@ app.post("/", async (c) => {
     })
     .returning({ id: audiobooks.id });
 
-  console.log(
-    `[upload] Created audiobook record with ID: ${bookId} for multipart upload.`,
-  );
+  console.log(`[upload] Created audiobook ${bookId} for multipart.`);
 
   const rawUploadKey = `raw-uploads/${userId}/${bookId}/${fileName}`;
   const uploadId = await bucket.initiateMultipartUpload(
@@ -156,7 +174,9 @@ app.post("/", async (c) => {
     uploadExpiresAt,
   });
 
-  console.log(`[upload] Initiated multipart upload for book ${bookId}`);
+  console.log(
+    `[upload] Initiated multipart upload for book ${bookId}, uploadId: ${uploadId}`,
+  );
 
   return c.json({
     bookId,
@@ -202,6 +222,10 @@ app.post("/get-presigned-urls", async (c) => {
     return c.json({ error: "Upload already completed or aborted" }, 409);
   }
 
+  console.log(
+    `[upload] Generating ${totalParts} presigned URLs for book ${bookId}, uploadId: ${uploadId}`,
+  );
+
   const presignedUrls = await bucket.getMultipartPresignedUrls(
     bucketName,
     fileKey,
@@ -229,17 +253,34 @@ app.post("/complete", async (c) => {
     return c.json({ error: "parts must be a non-empty array" }, 400);
   }
 
-  const invalidPart = parts.find(
-    (p) =>
-      typeof p.partNumber !== "number" || typeof p.etag !== "string" || !p.etag,
-  );
+  // ── Normalise camelCase → PascalCase and sort ─────────────────────────────
+  // The client sends { partNumber, etag } but S3/R2 providers need { PartNumber, ETag }
+  const normalizedParts = normalizeParts(parts);
 
-  if (invalidPart) {
+  if (normalizedParts.length === 0) {
+    console.error(
+      "[upload] All parts were invalid after normalisation:",
+      parts,
+    );
     return c.json(
-      { error: "Each part must have partNumber (number) and etag (string)" },
+      {
+        error:
+          "No valid parts after normalisation — each part needs partNumber (number) and etag (non-empty string)",
+      },
       400,
     );
   }
+
+  if (normalizedParts.length !== parts.length) {
+    console.warn(
+      `[upload] ${parts.length - normalizedParts.length} parts dropped during normalisation`,
+    );
+  }
+
+  console.log(
+    `[upload] Completing multipart for book ${bookId} with ${normalizedParts.length} parts`,
+    normalizedParts.map((p) => ({ PartNumber: p.PartNumber, ETag: p.ETag })),
+  );
 
   // Verify asset record matches
   const [asset] = await db
@@ -256,7 +297,12 @@ app.post("/complete", async (c) => {
   }
 
   try {
-    await bucket.completeMultipartUpload(bucketName, fileKey, uploadId, parts);
+    await bucket.completeMultipartUpload(
+      bucketName,
+      fileKey,
+      uploadId,
+      normalizedParts,
+    );
 
     await db
       .update(audiobooks)
@@ -275,11 +321,22 @@ app.post("/complete", async (c) => {
       fileName,
     } satisfies ParserJobData);
 
-    console.log(`[upload] Multipart complete for book ${bookId}`);
+    console.log(
+      `[upload] Multipart complete for book ${bookId} — queued for parsing`,
+    );
 
     return c.json({ ok: true, bookId, status: "processing" });
   } catch (error: any) {
-    console.error(`[upload] Multipart complete failed:`, error);
+    console.error("[upload] Multipart complete failed:", error);
+
+    try {
+      await bucket.abortMultipartUpload(bucketName, fileKey, uploadId);
+      console.log(
+        `[upload] Aborted dangling multipart upload for book ${bookId}`,
+      );
+    } catch (abortErr) {
+      console.warn("[upload] Could not abort after failed complete:", abortErr);
+    }
 
     await db
       .update(audiobooks)
@@ -290,7 +347,15 @@ app.post("/complete", async (c) => {
       })
       .where(eq(audiobooks.id, bookId));
 
-    return c.json({ error: "Failed to assemble upload parts" }, 500);
+    await db
+      .update(assets)
+      .set({ uploadStatus: "failed" })
+      .where(eq(assets.audiobookId, bookId));
+
+    return c.json(
+      { error: "Failed to assemble upload parts", details: error.message },
+      500,
+    );
   }
 });
 
@@ -303,6 +368,20 @@ app.post("/abort", async (c) => {
 
   if (!bookId || !uploadId || !fileKey) {
     return c.json({ error: "Missing required fields" }, 400);
+  }
+
+  // Verify it's actually pending before trying to abort
+  const [asset] = await db
+    .select({ uploadStatus: assets.uploadStatus })
+    .from(assets)
+    .where(eq(assets.audiobookId, bookId));
+
+  // If already finished/failed, just acknowledge — no need to call S3
+  if (asset && asset.uploadStatus !== "pending_upload") {
+    console.log(
+      `[upload] Abort requested for book ${bookId} but status is already '${asset.uploadStatus}' — skipping S3 call`,
+    );
+    return c.json({ ok: true, skipped: true });
   }
 
   try {
@@ -318,10 +397,40 @@ app.post("/abort", async (c) => {
       .set({ uploadStatus: "failed" })
       .where(eq(assets.audiobookId, bookId));
 
+    console.log(`[upload] Aborted multipart upload for book ${bookId}`);
+
     return c.json({ ok: true });
   } catch (error: any) {
-    console.error(`[upload] Abort failed:`, error);
-    return c.json({ error: "Failed to abort upload" }, 500);
+    // 404 from S3 = upload already gone (completed or previously aborted) — treat as success
+    if (
+      error?.Code === "NoSuchUpload" ||
+      error?.$metadata?.httpStatusCode === 404
+    ) {
+      console.warn(
+        `[upload] Abort 404 for book ${bookId} — upload already gone, marking failed anyway`,
+      );
+
+      await db
+        .update(audiobooks)
+        .set({
+          status: "failed",
+          errorMessage: "Upload aborted (session already expired)",
+        })
+        .where(eq(audiobooks.id, bookId));
+
+      await db
+        .update(assets)
+        .set({ uploadStatus: "failed" })
+        .where(eq(assets.audiobookId, bookId));
+
+      return c.json({ ok: true, note: "Upload session was already gone" });
+    }
+
+    console.error("[upload] Abort failed:", error);
+    return c.json(
+      { error: "Failed to abort upload", details: error.message },
+      500,
+    );
   }
 });
 

@@ -6,6 +6,7 @@ import { getDb } from "@audiobook/db/src";
 import { assets, audiobooks } from "@audiobook/db/src/schema/schema";
 import { storage } from "@audiobook/storage/src/storage.cf";
 import { ParserJobData } from "../types/jobs";
+import { getMimeType } from "hono/utils/mime";
 
 type Env = {
   Bindings: Cloudflare.Env;
@@ -519,22 +520,15 @@ app.post("/:id/reupload", async (c) => {
 
   const { userId, fileName, fileSizeBytes, text } = body;
 
-  //! check if same user is reuploading or if userId is missing
   if (!userId) return c.json({ error: "Missing userId" }, 400);
 
-  // Verify book exists and belongs to user
   const [book] = await db
-    .select({
-      id: audiobooks.id,
-      userId: audiobooks.userId,
-      status: audiobooks.status,
-    })
+    .select({ id: audiobooks.id, status: audiobooks.status })
     .from(audiobooks)
     .where(eq(audiobooks.id, audiobookId));
 
   if (!book) return c.json({ error: "Audiobook not found" }, 404);
 
-  // Prevent reupload while actively processing
   if (book.status === "processing") {
     return c.json(
       {
@@ -545,11 +539,40 @@ app.post("/:id/reupload", async (c) => {
     );
   }
 
-  console.log(
-    `[re-upload] Received re-upload request for audiobook ID: ${audiobookId}`,
-  );
+  console.log(`[re-upload] Request for audiobook ${audiobookId}`);
 
   const bucketName = c.env.RAW_BUCKET_NAME;
+
+  // Abort any still-open multipart session before starting fresh
+  const [existingAsset] = await db
+    .select({
+      uploadId: assets.uploadId,
+      s3Key: assets.s3Key,
+      uploadStatus: assets.uploadStatus,
+    })
+    .from(assets)
+    .where(eq(assets.audiobookId, audiobookId));
+
+  if (
+    existingAsset?.uploadId &&
+    existingAsset.uploadStatus === "pending_upload"
+  ) {
+    try {
+      await bucket.abortMultipartUpload(
+        bucketName,
+        existingAsset.s3Key!,
+        existingAsset.uploadId,
+      );
+      console.log(
+        `[re-upload] Aborted stale multipart session for book ${audiobookId}`,
+      );
+    } catch (e: any) {
+      // 404 = already gone, safe to ignore
+      if (e?.$metadata?.httpStatusCode !== 404) {
+        console.warn("[re-upload] Could not abort existing session:", e);
+      }
+    }
+  }
 
   try {
     // Direct text reupload
@@ -560,14 +583,9 @@ app.post("/:id/reupload", async (c) => {
         return c.json({ error: "Text exceeds 50MB limit" }, 413);
       }
 
-      console.log(
-        `[re-upload] Direct text submission received for book upload. Bypassing multipart.`,
-      );
-
       const generatedFileName = `${crypto.randomUUID().slice(0, 8)}.txt`;
       const textFileKey = `raw-uploads/${userId}/${audiobookId}/${generatedFileName}`;
 
-      // Reset pipeline state
       await db
         .update(audiobooks)
         .set({
@@ -575,11 +593,12 @@ app.post("/:id/reupload", async (c) => {
           rawFileName: generatedFileName,
           rawFileSizeBytes: textBytes.length,
           mimeType: "text/plain",
-          //? maybe clear HLS output key
           errorMessage: null,
         })
         .where(eq(audiobooks.id, audiobookId));
 
+      // Replace asset row
+      // await db.delete(assets).where(eq(assets.audiobookId, audiobookId));
       await db.insert(assets).values({
         audiobookId,
         type: "raw_upload",
@@ -600,7 +619,7 @@ app.post("/:id/reupload", async (c) => {
         fileName: generatedFileName,
       } satisfies ParserJobData);
 
-      console.log(`[re-upload] Direct text upload for book ${audiobookId}`);
+      console.log(`[re-upload] Direct text queued for book ${audiobookId}`);
 
       return c.json({
         ok: true,
@@ -610,17 +629,16 @@ app.post("/:id/reupload", async (c) => {
       });
     }
 
-    // Multipart reupload
+    // ── Multipart file reupload ─────────────────────────────────────────────
     if (!fileName || !fileSizeBytes) {
       return c.json({ error: "Missing fileName or fileSizeBytes" }, 400);
     }
 
-    const mimeType = fileName.endsWith(".pdf")
-      ? "application/pdf"
-      : fileName.endsWith(".txt")
-        ? "text/plain"
-        : null;
+    if (fileSizeBytes > MAX_FILE_SIZE_BYTES) {
+      return c.json({ error: "File exceeds 50MB limit" }, 413);
+    }
 
+    const mimeType = getMimeType(fileName);
     if (!mimeType) {
       return c.json({ error: "Only PDF and TXT files supported" }, 415);
     }
@@ -631,10 +649,8 @@ app.post("/:id/reupload", async (c) => {
       rawUploadKey,
       mimeType,
     );
-
     const uploadExpiresAt = new Date(Date.now() + UPLOAD_EXPIRY_SECONDS * 1000);
 
-    // Reset pipeline state
     await db
       .update(audiobooks)
       .set({
@@ -646,6 +662,8 @@ app.post("/:id/reupload", async (c) => {
       })
       .where(eq(audiobooks.id, audiobookId));
 
+    // Replace asset row so the uploadId is fresh
+    // await db.delete(assets).where(eq(assets.audiobookId, audiobookId));
     await db.insert(assets).values({
       audiobookId,
       type: "raw_upload",
@@ -660,9 +678,11 @@ app.post("/:id/reupload", async (c) => {
     });
 
     console.log(
-      `[re-upload] Initiated audiobook ID: ${audiobookId} for multipart re-upload.`,
+      `[re-upload] Initiated multipart for book ${audiobookId}, uploadId: ${uploadId}`,
     );
 
+    // ↓ Return the same shape as POST /upload so the client's
+    //   existing useMultipartUpload hook can hit /upload/get-presigned-urls unchanged
     return c.json({
       ok: true,
       bookId: audiobookId,
@@ -673,31 +693,19 @@ app.post("/:id/reupload", async (c) => {
       expiresAt: uploadExpiresAt.toISOString(),
     });
   } catch (error: any) {
-    const errorMessage =
-      error?.message ||
-      "Unknown error occurred during re-upload initialization";
-    console.error(`[re-upload] Audiobook ${audiobookId}:`, error);
+    const msg = error?.message ?? "Unknown error";
+    console.error(`[re-upload] Book ${audiobookId}:`, error);
 
-    try {
-      await db
-        .update(audiobooks)
-        .set({
-          status: "failed",
-          errorMessage: `Re-upload preparation failed: ${errorMessage}`,
-        })
-        .where(eq(audiobooks.id, audiobookId));
-    } catch (dbError) {
-      console.error(
-        "[re-upload] Failed to write failure state to Database:",
-        dbError,
+    await db
+      .update(audiobooks)
+      .set({ status: "failed", errorMessage: `Re-upload failed: ${msg}` })
+      .where(eq(audiobooks.id, audiobookId))
+      .catch((e) =>
+        console.error("[re-upload] Failed to write error state:", e),
       );
-    }
 
     return c.json(
-      {
-        error: "Failed to initialize re-upload configuration workflow",
-        details: errorMessage,
-      },
+      { error: "Failed to initialise re-upload", details: msg },
       500,
     );
   }

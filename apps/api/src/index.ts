@@ -1,14 +1,7 @@
 import { DOMParser, Node as XMLDOMNode } from "@xmldom/xmldom";
 
-// @ts-ignore
-if (typeof globalThis.DOMParser === "undefined") {
-  (globalThis as any).DOMParser = DOMParser;
-}
-
-// @ts-ignore
-if (typeof globalThis.Node === "undefined") {
-  (globalThis as any).Node = XMLDOMNode;
-}
+(globalThis as any).DOMParser = DOMParser;
+(globalThis as any).Node = XMLDOMNode;
 
 import { Hono } from "hono";
 import { queue } from "./queue";
