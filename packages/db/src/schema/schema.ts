@@ -9,4 +9,4 @@ export {
 export { segments } from "./segments.js";
 export { users } from "./users.js";
 export { providerEnum, voices } from "./voices.js";
-export { assets, assetTypeEnum } from "./assets.js";
+export { assets, assetTypeEnum, uploadStatusEnum } from "./assets.js";

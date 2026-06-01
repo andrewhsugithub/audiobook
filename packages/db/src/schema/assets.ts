@@ -23,6 +23,13 @@ export const assetTypeEnum = pgEnum("asset_type", [
   "final_audio", // the final stitched audiobook audio file (e.g. mp3 or wav)
 ]);
 
+export const uploadStatusEnum = pgEnum("upload_status", [
+  "pending_upload", // waiting for the user to upload the file (multipart or direct)
+  "finished_upload", // the file has been uploaded, waiting for processing
+  "ready_to_upload", // the file is ready and can be accessed
+  "failed", // there was an error processing the file
+]);
+
 export const assets = pgTable(
   "assets",
   {
@@ -45,12 +52,14 @@ export const assets = pgTable(
     // Multipart upload
     uploadId: text("upload_id"),
     uploadExpiresAt: timestamp("upload_expires_at"),
+    uploadStatus: uploadStatusEnum("upload_status"),
 
     // for hls
     sequenceNumber: integer("sequence_number"),
     durationSeconds: real("duration_seconds"),
 
-    createdAt: timestamp("created_at")
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at")
       .defaultNow()
       .notNull()
       .$onUpdate(() => sql`CURRENT_TIMESTAMP`),

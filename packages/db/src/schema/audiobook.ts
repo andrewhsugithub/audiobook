@@ -19,7 +19,8 @@ export const audiobookVisibilityEnum = pgEnum("audiobook_visibility", [
 
 // ! status should be updated by per chunk per segment basis instead of the whole book, otherwise if one chunk/segment fails the whole book is marked as failed and we can't retry just that chunk/segment
 export const audiobookStatusEnum = pgEnum("audiobook_status", [
-  "initiated", // Multipart upload started, urls handed to client
+  "initiated",
+  "ready_to_upload",
   "finished_upload", // S3 has successfully assembled the raw text/pdf chunks
   "processing",
   // "parsing", // Worker is extracting text and metadata from the raw file
@@ -54,6 +55,13 @@ export const audiobooks = pgTable(
     ratings: real("ratings").default(0),
     status: audiobookStatusEnum("status").default("initiated").notNull(),
 
+    // raw file tracking
+    // rawFileId: uuid("raw_file_id").references(() => assets.id, {
+    //   onDelete: "set null",
+    // }),
+    rawFileName: varchar("raw_file_name", { length: 500 }),
+    rawFileSizeBytes: integer("raw_file_size_bytes"),
+    mimeType: varchar("mime_type", { length: 100 }),
     // cover image folder, for tracking
     coverBucketName: varchar("cover_bucket_name", { length: 255 }),
     coverS3Key: text("cover_s3_key"),
