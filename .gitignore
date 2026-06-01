@@ -21,3 +21,8 @@ voices/
 *.pem
 
 test*
+
+*.pth
+*.model
+*.vocab
+**/checkpoints/*

@@ -11,9 +11,30 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+# Apple Silicon / MLX only
 fishaudio-s2-pro-mlx = [
     "mlx-audio>=0.4.2",
 ]
+
+# CUDA models compatible with chatterbox-tts (transformers==5.2.0).
+f5-tts = [
+    "f5-tts>=1.1.20",
+]
+kokoro = [
+    "kokoro>=0.9.4",
+    "soundfile>=0.13.0",
+]
+# IndexTTS-1.5 (transformers==4.36.2) and Orpheus (vllm==0.7.3, transformers~=4.48)
+# both pin older transformers majors that chatterbox-tts cannot tolerate, so
+# they cannot share a venv with chatterbox. Run them in an isolated venv:
+#
+#   uv run --isolated --with 'git+https://github.com/index-tts/index-tts.git@v1.5.0' \
+#     python inference/indextts.py
+#   uv run --isolated --with orpheus-speech --with vllm==0.7.3 \
+#     python inference/orpheus.py
+#
+# If you want one of them in the FastAPI server, give it its own pyproject /
+# venv and run it as a separate service.
 
 [tool.uv.sources]
 chatterbox-tts = { git = "https://github.com/resemble-ai/chatterbox.git" }
