@@ -12,7 +12,7 @@ type Props = {
 
 export default function Header({ title, right, backTo, backSearch }: Props) {
   return (
-    <header className="sticky top-0 z-999 flex h-16 items-center justify-between border-b-5 border-solid border-[rgba(245,240,214,0.12)] bg-(--brand-charcoal) px-10 backdrop-blur-xl">
+    <header className="sticky top-0 z-999 flex h-16 items-center justify-between bg-[var(--header-bg)] px-10 backdrop-blur-xl">
       {/* Back */}
       <Link
         to={backTo || '/'}

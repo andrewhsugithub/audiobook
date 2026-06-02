@@ -38,3 +38,11 @@ export function addToMyBooks(book: MyBook): void {
   if (books.some((b) => String(b.id) === String(book.id))) return
   localStorage.setItem(STORAGE_KEY, JSON.stringify([...books, book]))
 }
+
+export function removeFromMyBooks(bookId: string): void {
+  const books = getMyBooks()
+
+  const nextBooks = books.filter((book) => String(book.id) !== String(bookId))
+
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(nextBooks))
+}

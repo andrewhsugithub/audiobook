@@ -1,17 +1,20 @@
 import { createFileRoute } from '@tanstack/react-router'
-import { useEffect, useRef, useState } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
+import { useEffect, useRef, useState } from 'react'
 
 import Rating from '../components/Rating'
 import Header from '../components/Header'
+import BookmarkButton from '../components/BookmarkButton'
 import { HlsAudioPlayer } from '../components/HlsAudio'
+import { UploadForm } from '../components/UploadForm'
+import { useToast } from '../components/Toast'
+
 import { useHlsStream } from '../hooks/useHlsStream'
 import { useAudiobookInfo } from '../hooks/useAudiobookInfo'
-import { UploadForm } from '../components/UploadForm'
+
 import { API_BASE_URL as BASE_URL } from '../utils/api'
 import { CURRENT_USER_ID, IS_ADMIN } from '../utils/auth'
-import { addToMyBooks, isInMyBooks } from '../utils/myBooks'
-import { useToast } from '../components/Toast'
+import { addToMyBooks, isInMyBooks, removeFromMyBooks } from '../utils/myBooks'
 
 export const Route = createFileRoute('/books/$bookId')({
   head: ({ params }) => ({
@@ -165,20 +168,26 @@ function BookComponent() {
     setIsInLibrary(isInMyBooks(bookId))
   }, [bookId])
 
-  const addToMyLibrary = () => {
-    if (isInLibrary || !book) return
+  const toggleMyLibrary = () => {
+    if (!book) return
 
-    addToMyBooks({
-      id: book.id,
-      title: book.title,
-      author: book.author,
-      coverUrl: book.coverUrl,
-      ratings: book.ratings ?? 0,
-      description: book.description,
-    })
+    if (isInLibrary) {
+      removeFromMyBooks(bookId)
+      setIsInLibrary(false)
+      toast.success('Removed from your library.')
+    } else {
+      addToMyBooks({
+        id: book.id,
+        title: book.title,
+        author: book.author,
+        coverUrl: book.coverUrl,
+        ratings: book.ratings ?? 0,
+        description: book.description,
+      })
 
-    setIsInLibrary(true)
-    toast.success('Added to your library.')
+      setIsInLibrary(true)
+      toast.success('Added to your library.')
+    }
   }
 
   if (isInfoError) {
@@ -358,18 +367,77 @@ function BookComponent() {
           </span>
 
           {/* Library Button */}
-          <div className="mt-8 flex gap-4">
-            <button
-              onClick={addToMyLibrary}
-              disabled={isInLibrary || isInfoLoading}
-              className={`rounded-full px-6 py-3 transition-all duration-300 font-medium ${
-                isInLibrary || isInfoLoading
-                  ? 'cursor-not-allowed opacity-50 bg-white/5'
-                  : 'island-shell hover:scale-105'
-              }`}
+          <div className="flex items-center gap-4">
+            <BookmarkButton
+              isInLibrary={isInLibrary}
+              onClick={toggleMyLibrary}
+            />
+            {/* Stream / Player */}
+            <div className="flex-1">
+              {book?.isReady === false &&
+                (book?.status === 'initiated' ? (
+                  <div className="text-sm text-red-400 p-3 bg-red-500/10 rounded-lg border border-red-500/20">
+                    ❌ No content is currently available for this audiobook.
+                    <br />
+                    Please provide content to process.
+                  </div>
+                ) : book?.status === 'failed' ? (
+                  <div className="text-sm text-red-400 p-3 bg-red-500/10 rounded-lg border border-red-500/20">
+                    ❌ This audiobook failed to process.{' '}
+                    {book?.errorMessage
+                      ? `Error: ${book.errorMessage}`
+                      : 'Please try re-uploading the content.'}
+                  </div>
+                ) : (
+                  <div className="text-sm text-yellow-400 p-3 bg-yellow-500/10 rounded-lg border border-yellow-500/20">
+                    ⚠️ This audiobook is still being processed. Check back
+                    later!
+                  </div>
+                ))}
+              {isStreamLoading && (
+                <div className="text-sm opacity-60 animate-pulse flex items-center gap-2">
+                  <span>🔒</span> Establishing secure audio stream connection...
+                </div>
+              )}
+              {isStreamError && (
+                <div className="text-sm text-red-400 p-3 bg-red-500/10 rounded-lg border border-red-500/20">
+                  ⚠️ Secure Stream Error: {streamError.message}
+                </div>
+              )}
+              {isStreamReady && (
+                <HlsAudioPlayer src={audioURL} title={book?.title} />
+              )}
+            </div>
+            {/* <button
+              onClick={toggleMyLibrary}
+              disabled={isInfoLoading}
+              className={`
+                group
+                island-shell
+                w-[200px]
+                rounded-full
+                px-6 py-3
+                text-center
+                transition-all duration-300
+                hover:scale-105
+                disabled:cursor-not-allowed
+                disabled:opacity-50 ${
+                  isInfoLoading
+                    ? 'cursor-not-allowed opacity-50 bg-white/5'
+                    : 'island-shell hover:scale-105'
+                }`}
             >
-              {isInLibrary ? '✓ In My Library' : '+ My Library'}
-            </button>
+              {isInLibrary ? (
+                <>
+                  <span className="group-hover:hidden">✓ In My Library</span>
+                  <span className="hidden group-hover:inline">
+                    Remove from Library
+                  </span>
+                </>
+              ) : (
+                '+ My Library'
+              )}
+            </button> */}
           </div>
 
           {/* Description */}
@@ -430,42 +498,6 @@ function BookComponent() {
               </button>
             </div>
           )}
-
-          {/* Stream / Player */}
-          <div className="mt-6 min-h-[60px] flex flex-col justify-center">
-            {book?.isReady === false &&
-              (book?.status === 'initiated' ? (
-                <div className="text-sm text-red-400 p-3 bg-red-500/10 rounded-lg border border-red-500/20">
-                  ❌ No content is currently available for this audiobook.
-                  <br />
-                  Please provide content to process.
-                </div>
-              ) : book?.status === 'failed' ? (
-                <div className="text-sm text-red-400 p-3 bg-red-500/10 rounded-lg border border-red-500/20">
-                  ❌ This audiobook failed to process.{' '}
-                  {book?.errorMessage
-                    ? `Error: ${book.errorMessage}`
-                    : 'Please try re-uploading the content.'}
-                </div>
-              ) : (
-                <div className="text-sm text-yellow-400 p-3 bg-yellow-500/10 rounded-lg border border-yellow-500/20">
-                  ⚠️ This audiobook is still being processed. Check back later!
-                </div>
-              ))}
-            {isStreamLoading && (
-              <div className="text-sm opacity-60 animate-pulse flex items-center gap-2">
-                <span>🔒</span> Establishing secure audio stream connection...
-              </div>
-            )}
-            {isStreamError && (
-              <div className="text-sm text-red-400 p-3 bg-red-500/10 rounded-lg border border-red-500/20">
-                ⚠️ Secure Stream Error: {streamError.message}
-              </div>
-            )}
-            {isStreamReady && (
-              <HlsAudioPlayer src={audioURL} title={book?.title} />
-            )}
-          </div>
 
           {/* Admin Upload */}
           {isAdmin && isEditing && (

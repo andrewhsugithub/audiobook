@@ -18,7 +18,11 @@ type Env = {
 
 const app = new Hono<Env>();
 
-const ALLOWED_ORIGINS = ["http://localhost:5173", "http://localhost:3000"];
+const ALLOWED_ORIGINS = [
+  "http://localhost:5173",
+  "http://localhost:3000",
+  "http://127.0.0.1:3000",
+];
 
 app.use(
   "/*",
