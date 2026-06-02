@@ -1,4 +1,11 @@
-import { pgTable, uuid, text, timestamp, index } from "drizzle-orm/pg-core";
+import {
+  pgTable,
+  uuid,
+  text,
+  timestamp,
+  index,
+  unique,
+} from "drizzle-orm/pg-core";
 import { user } from "./auth.js";
 import { audiobooks } from "./audiobook.js";
 import { relations } from "../index.js";
@@ -18,6 +25,7 @@ export const userLibrary = pgTable(
   (table) => [
     index("user_library_user_idx").on(table.userId),
     index("user_library_book_idx").on(table.audiobookId),
+    unique("user_library_user_book_idx").on(table.userId, table.audiobookId),
   ],
 ).enableRLS();
 
