@@ -1,7 +1,7 @@
 //!!!!! IMPORTANT !!!!!
 //! if you have manual inputs in your database that you want to preserve, DO NOT RUN THIS SCRIPT! It will reset the users and voices tables and re-populate them with mock data, which will DELETE any existing data in those tables. Use with caution and ideally only in development environments where you don't have critical data.
 
-import { userSeed } from "./users.js";
+import { userSeed } from "./user.js";
 import { voiceSeed } from "./voice.js";
 import { audiobookSeed } from "./audiobook.js";
 
