@@ -103,14 +103,19 @@ export default function BookCarousel({
         aria-label={`${title} audiobooks`}
         className="flex gap-15 overflow-x-auto px-6 pb-6 pt-2 scroll-smooth no-scrollbar list-none"
       >
-        {bookIds.map((bookId) => (
-          <BookCard
-            key={bookId}
-            bookId={bookId}
-            libraryTitle={title || 'Library'}
-            variant="carousel"
-          />
-        ))}
+        <>
+          {bookIds.map((bookId) => (
+            <BookCard
+              key={bookId}
+              bookId={bookId}
+              libraryTitle={title || 'Library'}
+              variant="carousel"
+            />
+          ))}
+          {bookIds.length === 0 && (
+            <p className="text-sm opacity-50">No books available.</p>
+          )}
+        </>
       </ul>
     </div>
   )

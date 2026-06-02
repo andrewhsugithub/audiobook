@@ -9,11 +9,35 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
+import { Route as UploadRouteImport } from './routes/upload'
+import { Route as SignUpRouteImport } from './routes/sign-up'
+import { Route as SignInRouteImport } from './routes/sign-in'
+import { Route as MyBooksRouteImport } from './routes/my-books'
 import { Route as LibraryRouteImport } from './routes/library'
 import { Route as AboutRouteImport } from './routes/about'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as BooksBookIdRouteImport } from './routes/books.$bookId'
 
+const UploadRoute = UploadRouteImport.update({
+  id: '/upload',
+  path: '/upload',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const SignUpRoute = SignUpRouteImport.update({
+  id: '/sign-up',
+  path: '/sign-up',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const SignInRoute = SignInRouteImport.update({
+  id: '/sign-in',
+  path: '/sign-in',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const MyBooksRoute = MyBooksRouteImport.update({
+  id: '/my-books',
+  path: '/my-books',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const LibraryRoute = LibraryRouteImport.update({
   id: '/library',
   path: '/library',
@@ -39,12 +63,20 @@ export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/about': typeof AboutRoute
   '/library': typeof LibraryRoute
+  '/my-books': typeof MyBooksRoute
+  '/sign-in': typeof SignInRoute
+  '/sign-up': typeof SignUpRoute
+  '/upload': typeof UploadRoute
   '/books/$bookId': typeof BooksBookIdRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/about': typeof AboutRoute
   '/library': typeof LibraryRoute
+  '/my-books': typeof MyBooksRoute
+  '/sign-in': typeof SignInRoute
+  '/sign-up': typeof SignUpRoute
+  '/upload': typeof UploadRoute
   '/books/$bookId': typeof BooksBookIdRoute
 }
 export interface FileRoutesById {
@@ -52,25 +84,86 @@ export interface FileRoutesById {
   '/': typeof IndexRoute
   '/about': typeof AboutRoute
   '/library': typeof LibraryRoute
+  '/my-books': typeof MyBooksRoute
+  '/sign-in': typeof SignInRoute
+  '/sign-up': typeof SignUpRoute
+  '/upload': typeof UploadRoute
   '/books/$bookId': typeof BooksBookIdRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/about' | '/library' | '/books/$bookId'
+  fullPaths:
+    | '/'
+    | '/about'
+    | '/library'
+    | '/my-books'
+    | '/sign-in'
+    | '/sign-up'
+    | '/upload'
+    | '/books/$bookId'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/about' | '/library' | '/books/$bookId'
-  id: '__root__' | '/' | '/about' | '/library' | '/books/$bookId'
+  to:
+    | '/'
+    | '/about'
+    | '/library'
+    | '/my-books'
+    | '/sign-in'
+    | '/sign-up'
+    | '/upload'
+    | '/books/$bookId'
+  id:
+    | '__root__'
+    | '/'
+    | '/about'
+    | '/library'
+    | '/my-books'
+    | '/sign-in'
+    | '/sign-up'
+    | '/upload'
+    | '/books/$bookId'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   AboutRoute: typeof AboutRoute
   LibraryRoute: typeof LibraryRoute
+  MyBooksRoute: typeof MyBooksRoute
+  SignInRoute: typeof SignInRoute
+  SignUpRoute: typeof SignUpRoute
+  UploadRoute: typeof UploadRoute
   BooksBookIdRoute: typeof BooksBookIdRoute
 }
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
+    '/upload': {
+      id: '/upload'
+      path: '/upload'
+      fullPath: '/upload'
+      preLoaderRoute: typeof UploadRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/sign-up': {
+      id: '/sign-up'
+      path: '/sign-up'
+      fullPath: '/sign-up'
+      preLoaderRoute: typeof SignUpRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/sign-in': {
+      id: '/sign-in'
+      path: '/sign-in'
+      fullPath: '/sign-in'
+      preLoaderRoute: typeof SignInRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/my-books': {
+      id: '/my-books'
+      path: '/my-books'
+      fullPath: '/my-books'
+      preLoaderRoute: typeof MyBooksRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/library': {
       id: '/library'
       path: '/library'
@@ -106,6 +199,10 @@ const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   AboutRoute: AboutRoute,
   LibraryRoute: LibraryRoute,
+  MyBooksRoute: MyBooksRoute,
+  SignInRoute: SignInRoute,
+  SignUpRoute: SignUpRoute,
+  UploadRoute: UploadRoute,
   BooksBookIdRoute: BooksBookIdRoute,
 }
 export const routeTree = rootRouteImport
