@@ -1,94 +1,162 @@
-import { Context, Hono } from "hono";
+import { Hono } from "hono";
+import { zValidator } from "@hono/zod-validator";
+import { z } from "zod";
 import { getCookie, setCookie, deleteCookie } from "hono/cookie";
 import { sign, verify } from "hono/jwt";
 import { eq, ilike, or, desc, and, asc, sql } from "@audiobook/db/src/index";
 import { getDb } from "@audiobook/db/src";
 import { assets, audiobooks } from "@audiobook/db/src/schema/schema";
 import { storage } from "@audiobook/storage/src/storage.cf";
+import type { Env } from "../types/env";
+import { authMiddleware } from "../middleware/auth";
+import { swrCache } from "../middleware/swr-cache";
+import {
+  TOKEN_TTL,
+  MAX_SESSION_TTL,
+  PRE_REFRESH_BUFFER,
+} from "../constants/session";
+import {
+  CACHE_CONTROL_IMMUTABLE,
+  CACHE_CONTROL_PLAYLIST,
+} from "../constants/cache";
+import { ALLOWED_ORIGINS } from "../constants/cors";
+import { getHlsCookieName, getHlsCookieOptions } from "../helpers/cookie";
+import { getMimeType, getSegmentContentType } from "../helpers/mime";
+import { buildCacheKey, bustInfoCache } from "../helpers/cache";
+import {
+  MAX_FILE_SIZE_BYTES,
+  UPLOAD_EXPIRY_SECONDS,
+} from "../constants/upload";
 import { ParserJobData } from "../types/jobs";
-import { getMimeType } from "hono/utils/mime";
-
-type Env = {
-  Bindings: Cloudflare.Env;
-};
 
 const app = new Hono<Env>();
 
-const ALLOWED_ORIGINS = ["http://localhost:5173", "http://localhost:3000"];
-
-const TOKEN_TTL = 3600; // 1 hour sliding window
-// const TOKEN_TTL = 10; // for testing use
-const MAX_SESSION_TTL = 21600; // 6 hours absolute cutoff cap (Replay protection)
-
-function getCookieName(audiobookId: string) {
-  return `hls_session_${audiobookId}`;
+// IMAGE HASHING
+async function computeBufferHash(buffer: ArrayBuffer): Promise<string> {
+  const hashBuffer = await crypto.subtle.digest("SHA-256", buffer);
+  return Array.from(new Uint8Array(hashBuffer))
+    .map((b) => b.toString(16).padStart(2, "0"))
+    .join("")
+    .slice(0, 12); // 12-char string is more than enough for unique asset paths
 }
 
-function getContentType(filename: string): string {
-  if (filename.endsWith(".m3u8")) return "application/vnd.apple.mpegurl";
-  if (filename.endsWith(".m4s")) return "video/iso.segment";
-  if (filename.endsWith(".mp4")) return "video/mp4";
-  return "application/octet-stream";
-}
-
-function getCookieOptions(
-  c: Context<Env>,
-  audiobookId: string,
-  maxAge: number,
-) {
-  // force local to have same settings in production to avoid issues with cookie acceptance in browsers
-  return {
-    httpOnly: true,
-    secure: true,
-    sameSite: "None" as const,
-    path: `/audiobook/${audiobookId}`,
-    maxAge,
-  };
-}
-
-//? maybe cache
-app.get("/:id/info", async (c) => {
-  const audiobookId = c.req.param("id");
-  const db = getDb(c.env.HYPERDRIVE.connectionString);
-
-  const [book] = await db
-    .select({
-      id: audiobooks.id,
-      status: audiobooks.status,
-      title: audiobooks.title,
-      author: audiobooks.author,
-      description: audiobooks.description,
-      coverBucketName: audiobooks.coverBucketName,
-      coverS3Key: audiobooks.coverS3Key,
-      ratings: audiobooks.ratings,
-      errorMessage: audiobooks.errorMessage,
-    })
-    .from(audiobooks)
-    .where(eq(audiobooks.id, audiobookId));
-
-  if (!book) return c.json({ error: "Audiobook not found" }, 404);
-
-  // let coverUrl = "https://placehold.co/300x450";
-  let coverUrl = `${c.env.RANDOM_COVER_BASE_URL}/${book.id}/300/450`; // fallback to random seeded cover for better UX while cover is being processed
-  if (book.coverBucketName && book.coverS3Key) {
-    const baseUrl = new URL(c.req.url).origin;
-    const ext = book.coverS3Key.split(".").pop() || "jpg";
-    coverUrl = `${baseUrl}/cover/${book.id}.${ext}`;
-  }
-
-  return c.json({
-    id: book.id,
-    status: book.status,
-    title: book.title,
-    author: book.author,
-    description: book.description,
-    ratings: book.ratings,
-    coverUrl,
-    isReady: book.status === "completed",
-    errorMessage: book.errorMessage,
-  });
+const patchSchema = z.object({
+  title: z.string().min(1).optional(),
+  author: z.string().optional(),
+  description: z.string().optional(),
+  ratings: z.number().min(0).max(5).optional(),
+  visibility: z.enum(["public", "private"]).optional(),
 });
 
+const searchSchema = z.object({
+  q: z.string().default(""),
+  limit: z.coerce.number().min(1).max(50).default(30),
+  offset: z.coerce.number().min(0).default(0),
+  completeOnly: z
+    .string()
+    .transform((v) => v === "true")
+    .default(false),
+});
+
+// METADATA ENDPOINT WITH ETAG SWR VALIDATION
+app.get(
+  "/:id/info",
+  swrCache({ freshTtl: 3_600, staleTtl: 86_400 }),
+  async (c) => {
+    const audiobookId = c.req.param("id");
+    const db = getDb(c.env.HYPERDRIVE.connectionString);
+
+    let currentUserId: string | null = null;
+    let isAdmin = false;
+
+    try {
+      const { createAuth } = await import("../lib/auth");
+
+      const auth = createAuth(c.env);
+
+      const session = await auth.api.getSession({ headers: c.req.raw.headers });
+      if (session?.user) {
+        currentUserId = session.user.id;
+        isAdmin = session.user.role === "admin";
+      }
+    } catch {
+      // Unauthenticated => guest
+    }
+
+    const [book] = await db
+      .select({
+        id: audiobooks.id,
+        status: audiobooks.status,
+        title: audiobooks.title,
+        author: audiobooks.author,
+        description: audiobooks.description,
+        coverBucketName: audiobooks.coverBucketName,
+        coverS3Key: audiobooks.coverS3Key,
+        ratings: audiobooks.ratings,
+        errorMessage: audiobooks.errorMessage,
+        visibility: audiobooks.visibility,
+        userId: audiobooks.userId,
+        updatedAt: audiobooks.updatedAt, // Retrieved to make our ETag dynamic
+      })
+      .from(audiobooks)
+      .where(eq(audiobooks.id, audiobookId));
+
+    if (!book) return c.json({ error: "Audiobook not found" }, 404);
+
+    // Block access to other people's private books except for admins
+    if (
+      book.visibility === "private" &&
+      book.userId !== currentUserId &&
+      !isAdmin
+    ) {
+      return c.json({ error: "Audiobook not found" }, 404); // 404 not 403 — don't leak existence
+    }
+
+    let coverUrl = `${c.env.RANDOM_COVER_BASE_URL}/${book.id}/300/450`;
+    if (book.coverBucketName && book.coverS3Key) {
+      const baseUrl = new URL(c.req.url).origin;
+      // Pull exact versioned hashed filename from S3 key store path
+      const filename = book.coverS3Key.split("/").pop();
+      coverUrl = `${baseUrl}/cover/${book.id}/${filename}`;
+    }
+
+    const responseData = {
+      id: book.id,
+      status: book.status,
+      title: book.title,
+      author: book.author,
+      description: book.description,
+      ratings: book.ratings,
+      coverUrl,
+      isReady: book.status === "completed",
+      errorMessage: book.errorMessage,
+      visibility: book.visibility,
+      isOwner: currentUserId ? book.userId === currentUserId : false,
+      updatedAt: book.updatedAt,
+    };
+
+    // Cloudflare prefers Weak ETags W/"..." if features like Brotli compression are active.
+    // const eTagValue = await generateETag(responseData);
+    const eTagValue = `W/"${book.id}-${book.updatedAt}-${currentUserId ?? "guest"}"`;
+
+    if (c.req.header("If-None-Match") === eTagValue) {
+      return new Response(null, {
+        status: 304,
+        headers: {
+          ETag: eTagValue,
+          "Cache-Control": "no-cache, must-revalidate",
+        },
+      });
+    }
+
+    return c.json(responseData, 200, {
+      "Cache-Control": "no-cache, must-revalidate",
+      ETag: eTagValue,
+    });
+  },
+);
+
+// Short-lived — polling endpoint, no caching
 app.get("/:id/status", async (c) => {
   const audiobookId = c.req.param("id");
   const db = getDb(c.env.HYPERDRIVE.connectionString);
@@ -112,14 +180,18 @@ app.get("/:id/status", async (c) => {
       ? Math.round((book.processedSegments! / book.totalSegments) * 100)
       : 0;
 
-  return c.json({
-    id: book.id,
-    status: book.status,
-    durationSeconds: book.totalDurationSeconds,
-    progress,
-    isReady: book.status === "completed",
-    errorMessage: book.errorMessage,
-  });
+  return c.json(
+    {
+      id: book.id,
+      status: book.status,
+      durationSeconds: book.totalDurationSeconds,
+      progress,
+      isReady: book.status === "completed",
+      errorMessage: book.errorMessage,
+    },
+    200,
+    { "Cache-Control": "no-store" },
+  );
 });
 
 app.post("/:id/session", async (c) => {
@@ -135,7 +207,7 @@ app.post("/:id/session", async (c) => {
     return c.json({ error: "Audiobook processing incomplete" }, 404);
   }
 
-  const now = Math.floor(Date.now() / 1000);
+  const now = Math.floor(Date.now() / 1_000);
 
   const token = await sign(
     {
@@ -150,72 +222,80 @@ app.post("/:id/session", async (c) => {
 
   setCookie(
     c,
-    getCookieName(audiobookId),
+    getHlsCookieName(audiobookId),
     token,
-    getCookieOptions(c, audiobookId, TOKEN_TTL),
+    getHlsCookieOptions(c, audiobookId, TOKEN_TTL),
   );
 
   return c.json({
     ok: true,
     expiresIn: TOKEN_TTL,
-    expiresAt: new Date((now + TOKEN_TTL) * 1000).toISOString(),
-    // Hint to frontend: schedule refresh at this time
-    refreshAt: new Date((now + TOKEN_TTL - 300) * 1000).toISOString(), // 5-minute pre-refresh warning
+    expiresAt: new Date((now + TOKEN_TTL) * 1_000).toISOString(),
+    refreshAt: new Date(
+      (now + TOKEN_TTL - PRE_REFRESH_BUFFER) * 1_000,
+    ).toISOString(),
   });
 });
 
 app.post("/:id/refresh", async (c) => {
   const audiobookId = c.req.param("id");
-  const currentToken = getCookie(c, getCookieName(audiobookId));
+  const currentToken = getCookie(c, getHlsCookieName(audiobookId));
 
   if (!currentToken)
     return c.json({ error: "Active streaming session missing" }, 401);
 
+  let payload: Awaited<ReturnType<typeof verify>>;
+
   try {
-    const payload = await verify(currentToken, c.env.TOKEN_SECRET, "HS256");
-    if (payload.sub !== audiobookId)
-      return c.json({ error: "Scope mismatch" }, 403);
-
-    const now = Math.floor(Date.now() / 1000);
-
-    // Enforce permanent session termination if max lifespan is exceeded
-    if (payload.maxEnd && now > (payload.maxEnd as number)) {
-      throw new Error("Absolute session limit reached");
-    }
-
-    const newToken = await sign(
-      {
-        sub: audiobookId,
-        iat: now,
-        exp: now + TOKEN_TTL,
-        maxEnd: payload.maxEnd,
-      },
-      c.env.TOKEN_SECRET,
-      "HS256",
-    );
-
-    setCookie(
-      c,
-      getCookieName(audiobookId),
-      newToken,
-      getCookieOptions(c, audiobookId, TOKEN_TTL),
-    );
-
-    return c.json({
-      ok: true,
-      expiresIn: TOKEN_TTL,
-      expiresAt: new Date((now + TOKEN_TTL) * 1000).toISOString(),
-      refreshAt: new Date((now + TOKEN_TTL - 300) * 1000).toISOString(),
-    });
+    payload = await verify(currentToken, c.env.TOKEN_SECRET, "HS256");
   } catch {
-    deleteCookie(c, getCookieName(audiobookId), {
-      path: `/audiobook/${audiobookId}/`,
+    deleteCookie(c, getHlsCookieName(audiobookId), {
+      path: `/audiobook/${audiobookId}`,
+    });
+    return c.json({ error: "Session verification failed" }, 401);
+  }
+
+  if (payload.sub !== audiobookId)
+    return c.json({ error: "Scope mismatch" }, 403);
+
+  const now = Math.floor(Date.now() / 1_000);
+
+  if (payload.maxEnd && now > (payload.maxEnd as number)) {
+    deleteCookie(c, getHlsCookieName(audiobookId), {
+      path: `/audiobook/${audiobookId}`,
     });
     return c.json(
       { error: "Session expired or capped. Please re-authenticate." },
       401,
     );
   }
+
+  const newToken = await sign(
+    {
+      sub: audiobookId,
+      iat: now,
+      exp: now + TOKEN_TTL,
+      maxEnd: payload.maxEnd, // preserve hard cap
+    },
+    c.env.TOKEN_SECRET,
+    "HS256",
+  );
+
+  setCookie(
+    c,
+    getHlsCookieName(audiobookId),
+    newToken,
+    getHlsCookieOptions(c, audiobookId, TOKEN_TTL),
+  );
+
+  return c.json({
+    ok: true,
+    expiresIn: TOKEN_TTL,
+    expiresAt: new Date((now + TOKEN_TTL) * 1_000).toISOString(),
+    refreshAt: new Date(
+      (now + TOKEN_TTL - PRE_REFRESH_BUFFER) * 1_000,
+    ).toISOString(),
+  });
 });
 
 app.get("/:id/:filename{.+}", async (c) => {
@@ -224,8 +304,7 @@ app.get("/:id/:filename{.+}", async (c) => {
   const origin = c.req.header("Origin") ?? "";
   const rangeHeader = c.req.header("Range");
 
-  // Auth gatekeeper
-  const sessionToken = getCookie(c, getCookieName(audiobookId));
+  const sessionToken = getCookie(c, getHlsCookieName(audiobookId));
   if (!sessionToken) return c.json({ error: "Unauthorized access" }, 401);
 
   try {
@@ -237,58 +316,48 @@ app.get("/:id/:filename{.+}", async (c) => {
   }
 
   const isPlaylist = filename.endsWith(".m3u8");
-  // ── Cache check ───────────────────────────────────────────────────────────
-  // Never cache playlists — they are private (contain session context)
-  // Never store CORS headers in cache — causes CORS cache poisoning
+
+  // Always-dynamic CORS headers — never stored in the CDN cache
+  const corsHeaders = {
+    "Access-Control-Allow-Origin": ALLOWED_ORIGINS.includes(origin as any)
+      ? origin
+      : "",
+    "Access-Control-Allow-Credentials": "true",
+  };
+
+  // ── Cache check (segments only, no range, no playlists) ─────────────────
   const cache = caches.default;
-  // Clean cache configuration key
-  const cacheUrl = new URL(c.req.url);
-  cacheUrl.search = "";
-  const cacheKey = new Request(cacheUrl.toString(), { method: "GET" });
 
-  // Read cache for full segment calls
-  if (!isPlaylist && !rangeHeader) {
-    // Only cache non-range requests — range responses are partial and
-    // must not be served to requests expecting the full file
-    const cachedResponse = await cache.match(cacheKey);
-    console.log(
-      `Cache ${cachedResponse ? "HIT" : "MISS"} for ${filename} (Range: ${
-        rangeHeader ?? "none"
-      })`,
-    );
+  let cacheKey: Request | null = null;
+  try {
+    cacheKey = buildCacheKey(c.req.url);
+  } catch (e) {
+    // Malformed URL — skip caching entirely, still serve the asset
+    console.warn("[get-file] Could not build cache key, bypassing cache:", e);
+  }
 
-    if (cachedResponse) {
-      console.log(
-        `Serving ${filename} from cache with appropriate CORS headers`,
-      );
-      // Reconstruct response to add CORS + cache status headers
-      // NEVER store these in the cache itself — causes CORS cache poisoning
-      return new Response(cachedResponse.body, {
-        status: cachedResponse.status,
-        headers: {
-          // Preserve original headers from cache
-          ...Object.fromEntries(cachedResponse.headers.entries()),
-          // Add CORS fresh on every response — never from cache
-          "Access-Control-Allow-Origin": ALLOWED_ORIGINS.includes(origin)
-            ? origin
-            : "",
-          "Access-Control-Allow-Credentials": "true",
-          // Monitoring
-          "X-Cache-Status": "HIT",
-        },
-      });
+  if (!isPlaylist && !rangeHeader && cacheKey) {
+    try {
+      const cached = await cache.match(cacheKey);
+      if (cached) {
+        return new Response(cached.body, {
+          status: cached.status,
+          headers: {
+            ...Object.fromEntries(cached.headers.entries()),
+            ...corsHeaders,
+            "X-Cache-Status": "HIT",
+          },
+        });
+      }
+    } catch (e) {
+      console.warn("[get-file] Cache read failed, falling through to S3:", e);
     }
   }
 
-  // S3 Upstream Retrieval
+  // ── S3 upstream retrieval ────────────────────────────────────────────────
   const store = storage.getInstance(c.env);
   const s3Key = `audiobooks/${audiobookId}/hls/${filename}`;
-  console.log(
-    `Cache MISS for ${filename} (Range: ${rangeHeader ?? "none"}) — fetching from S3 with key: ${s3Key}`,
-  );
 
-  // Pass Range header through to R2 for proper byte-range support
-  // This is critical for HLS.js seeking and for fMP4 init segment fetching
   const s3Object = await store.getObjectWithRange(
     c.env.MEDIA_BUCKET_NAME,
     s3Key,
@@ -297,71 +366,64 @@ app.get("/:id/:filename{.+}", async (c) => {
 
   if (!s3Object) return c.json({ error: "Media asset not found" }, 404);
 
-  const corsHeaders = {
-    // Always set dynamically — never from cache
-    "Access-Control-Allow-Origin": ALLOWED_ORIGINS.includes(origin)
-      ? origin
-      : "",
-    "Access-Control-Allow-Credentials": "true",
-  };
-
-  // Serve Playlists Manifests
+  // ── Serve HLS playlist manifest (never cache) ────────────────────────────
   if (isPlaylist) {
-    // Playlist: private, no CDN cache, no browser cache
-    // Different users get same playlist file (VOD) but we still mark private
-    // because in future you might personalise playlists
     return new Response(s3Object.stream, {
       status: 200,
       headers: {
         "Content-Type": "application/vnd.apple.mpegurl",
-        "Cache-Control": "private, no-store, no-cache, must-revalidate",
+        "Cache-Control": CACHE_CONTROL_PLAYLIST,
         "X-Cache-Status": "MISS",
         ...corsHeaders,
       },
     });
   }
 
-  // Serve Range Requests (206 Partial Content)
+  // ── Serve range requests (206 Partial Content) ───────────────────────────
   if (rangeHeader && s3Object.rangeResponse) {
-    // Partial content response for Range requests
-    // Required for: seeking, progressive loading, some iOS Safari behaviors
     const { start, end, total } = s3Object.rangeResponse;
     return new Response(s3Object.stream, {
-      status: 206, // Partial Content
+      status: 206,
       headers: {
-        "Content-Type": getContentType(filename),
+        "Content-Type": getSegmentContentType(filename),
         "Content-Range": `bytes ${start}-${end}/${total}`,
         "Content-Length": String(end - start + 1),
         "Accept-Ranges": "bytes",
-        "Cache-Control": "public, max-age=31536000, immutable",
+        "Cache-Control": CACHE_CONTROL_IMMUTABLE,
         "X-Cache-Status": "MISS",
         ...corsHeaders,
       },
     });
   }
 
-  // Serve & Cache Full Segments (200 OK)
-  // Build response WITHOUT CORS headers for caching
-  // CORS headers added dynamically after cache read
+  // ── Serve & cache full segment (200 OK) ──────────────────────────────────
+  // CORS headers are intentionally EXCLUDED from the cached entry to prevent
+  // CORS cache poisoning — they are added dynamically after every cache read.
   const responseForCache = new Response(s3Object.stream, {
     status: 200,
     headers: {
-      "Content-Type": getContentType(filename),
-      "Cache-Control": "public, max-age=31536000, immutable",
+      "Content-Type": getSegmentContentType(filename),
+      "Cache-Control": CACHE_CONTROL_IMMUTABLE,
       "Accept-Ranges": "bytes",
-      // Intentionally NO CORS headers here — added after cache read
     },
   });
 
-  // Split stream using tee() to handle both caching and pipeline routing
   const [clientStream, cacheStream] = responseForCache.body!.tee();
 
-  c.executionCtx.waitUntil(
-    cache.put(
-      cacheKey,
-      new Response(cacheStream, { headers: responseForCache.headers }),
-    ),
-  );
+  // Only attempt cache write if we have a valid key
+  if (cacheKey) {
+    c.executionCtx.waitUntil(
+      cache
+        .put(
+          cacheKey,
+          new Response(cacheStream, { headers: responseForCache.headers }),
+        )
+        .catch((e) => console.warn("[get-file] Cache write failed:", e)),
+    );
+  } else {
+    // Drain unused stream branch to avoid memory leak
+    c.executionCtx.waitUntil(cacheStream.cancel().catch(() => {}));
+  }
 
   return new Response(clientStream, {
     status: 200,
@@ -373,15 +435,60 @@ app.get("/:id/:filename{.+}", async (c) => {
   });
 });
 
-app.get("/search", async (c) => {
-  const query = c.req.query("q")?.trim() ?? "";
-  const limit = Math.min(parseInt(c.req.query("limit") ?? "30"), 50);
-  const offset = parseInt(c.req.query("offset") ?? "0");
-  const completeOnly = c.req.query("completeOnly") === "true";
-
+app.get("/search", zValidator("query", searchSchema), async (c) => {
+  const { q: query, limit, offset, completeOnly } = c.req.valid("query");
   const db = getDb(c.env.HYPERDRIVE.connectionString);
 
-  // Empty query returns recent completed audiobooks then recently updated audiobooks regardless of status
+  // Try to get the current user from the session cookie (optional auth)
+  let currentUserId: string | null = null;
+  let isAdmin = false;
+
+  try {
+    // reuse authMiddleware logic inline — peek at the session without hard-failing
+    const { createAuth } = await import("../lib/auth");
+
+    const auth = createAuth(c.env);
+
+    const session = await auth.api.getSession({ headers: c.req.raw.headers });
+    if (session?.user) {
+      currentUserId = session.user.id;
+      isAdmin = session.user.role === "admin";
+    }
+  } catch {
+    // unauthenticated => guest
+  }
+
+  // Build visibility filter:
+  // - Admin: see everything
+  // - Logged in: public books + own private books
+  // - Guest: public books only
+  const visibilityFilter = isAdmin
+    ? undefined // no filter
+    : currentUserId
+      ? or(
+          eq(audiobooks.visibility, "public"),
+          and(
+            eq(audiobooks.visibility, "private"),
+            eq(audiobooks.userId, currentUserId),
+          ),
+        )
+      : eq(audiobooks.visibility, "public");
+
+  const baseCondition = completeOnly
+    ? and(eq(audiobooks.status, "completed"), visibilityFilter)
+    : visibilityFilter;
+
+  const searchCondition =
+    query.length > 0
+      ? and(
+          baseCondition,
+          or(
+            ilike(audiobooks.title, `%${query}%`),
+            ilike(audiobooks.author, `%${query}%`),
+          ),
+        )
+      : baseCondition;
+
   const results = await db
     .select({
       id: audiobooks.id,
@@ -392,23 +499,11 @@ app.get("/search", async (c) => {
       coverBucketName: audiobooks.coverBucketName,
       coverS3Key: audiobooks.coverS3Key,
       status: audiobooks.status,
-      createdAt: audiobooks.createdAt,
+      visibility: audiobooks.visibility,
+      userId: audiobooks.userId,
     })
     .from(audiobooks)
-    .where(
-      completeOnly
-        ? and(
-            eq(audiobooks.status, "completed"),
-            or(
-              ilike(audiobooks.title, `%${query}%`),
-              ilike(audiobooks.author, `%${query}%`),
-            ),
-          )
-        : or(
-            ilike(audiobooks.title, `%${query}%`),
-            ilike(audiobooks.author, `%${query}%`),
-          ),
-    )
+    .where(searchCondition)
     .orderBy(
       asc(sql`CASE WHEN ${audiobooks.status} = 'completed' THEN 0 ELSE 1 END`),
       desc(audiobooks.updatedAt),
@@ -419,13 +514,11 @@ app.get("/search", async (c) => {
   const baseUrl = new URL(c.req.url).origin;
 
   const mapped = results.map((book) => {
-    // let coverUrl = "https://placehold.co/300x450";
-    let coverUrl = `${c.env.RANDOM_COVER_BASE_URL}/${book.id}/300/450`; // fallback to random seeded cover for better UX while cover is being processed
+    let coverUrl = `${c.env.RANDOM_COVER_BASE_URL}/${book.id}/300/450`;
     if (book.coverBucketName && book.coverS3Key) {
-      const ext = book.coverS3Key.split(".").pop() ?? "jpg";
-      coverUrl = `${baseUrl}/cover/${book.id}.${ext}`;
+      const filename = book.coverS3Key.split("/").pop();
+      coverUrl = `${baseUrl}/cover/${book.id}/${filename}`;
     }
-
     return {
       id: book.id,
       title: book.title,
@@ -434,6 +527,8 @@ app.get("/search", async (c) => {
       ratings: book.ratings,
       coverUrl,
       status: book.status,
+      visibility: book.visibility,
+      isOwner: currentUserId ? book.userId === currentUserId : false,
     };
   });
 
@@ -446,56 +541,109 @@ app.get("/search", async (c) => {
   });
 });
 
-//! add endpoint to edit cover image
-app.patch("/:id", async (c) => {
+app.patch("/:id", authMiddleware, async (c) => {
   const audiobookId = c.req.param("id");
   const db = getDb(c.env.HYPERDRIVE.connectionString);
-  const body = await c.req.json();
-
-  const { title, author, description, ratings } = body;
-
-  // Only allow updating these fields
-  const updateFields: Record<string, unknown> = {};
-
-  if (title !== undefined) {
-    if (typeof title !== "string" || title.trim().length === 0) {
-      return c.json({ error: "title must be a non-empty string" }, 400);
-    }
-    updateFields.title = title.trim();
-  }
-
-  if (author !== undefined) {
-    if (typeof author !== "string") {
-      return c.json({ error: "author must be a string" }, 400);
-    }
-    updateFields.author = author.trim() || null;
-  }
-
-  if (description !== undefined) {
-    if (typeof description !== "string") {
-      return c.json({ error: "description must be a string" }, 400);
-    }
-    updateFields.description = description.trim() || null;
-  }
-
-  if (ratings !== undefined) {
-    const r = Number(ratings);
-    if (isNaN(r) || r < 0 || r > 5) {
-      return c.json({ error: "ratings must be a number between 0 and 5" }, 400);
-    }
-    updateFields.ratings = r;
-  }
+  const { id: userId, role } = c.var.authSession.user;
+  const isAdmin = role === "admin";
 
   const [book] = await db
-    .select({ id: audiobooks.id })
+    .select({
+      id: audiobooks.id,
+      userId: audiobooks.userId,
+      visibility: audiobooks.visibility,
+    })
     .from(audiobooks)
     .where(eq(audiobooks.id, audiobookId));
 
   if (!book) return c.json({ error: "Audiobook not found" }, 404);
 
+  // Only owner or admin can edit
+  if (!isAdmin && book.userId !== userId) {
+    return c.json({ error: "Forbidden — you don't own this book" }, 403);
+  }
+
+  // Public books can only be edited by admins or owners
+  if (book.visibility === "public" && !isAdmin && book.userId !== userId) {
+    return c.json(
+      {
+        error:
+          "Forbidden — public books can only be edited by admins or owners",
+      },
+      403,
+    );
+  }
+
+  const contentType = c.req.header("Content-Type") ?? "";
+
+  let fields: {
+    title?: string;
+    author?: string;
+    description?: string;
+    ratings?: number;
+    visibility?: "public" | "private";
+  } = {};
+
+  let coverFile: File | null = null;
+
+  if (contentType.includes("multipart/form-data")) {
+    const formData = await c.req.formData();
+
+    const titleVal = formData.get("title");
+    const authorVal = formData.get("author");
+    const descVal = formData.get("description");
+    const ratingsVal = formData.get("ratings");
+    const visibilityVal = formData.get("visibility");
+    const coverVal = formData.get("cover");
+
+    if (titleVal !== null) fields.title = String(titleVal).trim();
+    if (authorVal !== null) fields.author = String(authorVal).trim();
+    if (descVal !== null) fields.description = String(descVal).trim();
+    if (ratingsVal !== null) fields.ratings = parseFloat(String(ratingsVal));
+    if (visibilityVal !== null)
+      fields.visibility = visibilityVal as "public" | "private";
+    if (coverVal instanceof File && coverVal.size > 0) coverFile = coverVal;
+  } else {
+    const body = await c.req.json();
+    const parsed = patchSchema.safeParse(body);
+    if (!parsed.success) return c.json({ error: parsed.error.flatten() }, 400);
+    fields = parsed.data;
+  }
+
+  // Cover image asset uploading pipeline
+  if (coverFile) {
+    const store = storage.getInstance(c.env);
+    const ext = coverFile.name.split(".").pop() ?? "webp";
+    const arrayBuffer = await coverFile.arrayBuffer();
+
+    // Generate unique SHA-256 slice from file buffer contents
+    const contentHash = await computeBufferHash(arrayBuffer);
+
+    // Inject hash directly into naming string pattern
+    const coverKey = `covers/${audiobookId}/${contentHash}.${ext}`;
+    const coverBucket = c.env.PUBLIC_ASSETS_BUCKET_NAME;
+
+    const bufferView = new Uint8Array(arrayBuffer);
+    await store.putObject(coverBucket, coverKey, bufferView, coverFile.type);
+
+    const [updated] = await db
+      .update(audiobooks)
+      .set({
+        ...fields,
+        coverBucketName: coverBucket,
+        coverS3Key: coverKey,
+      })
+      .where(eq(audiobooks.id, audiobookId))
+      .returning({ id: audiobooks.id });
+
+    // dont need to bust image cache since we hashed the image by content for the new url, but we do need to bust the info cache to update other metadata
+    await bustInfoCache(c, audiobookId);
+    return c.json({ ok: true, book: updated });
+  }
+
   const [updated] = await db
     .update(audiobooks)
-    .set(updateFields)
+    .set(fields)
     .where(eq(audiobooks.id, audiobookId))
     .returning({
       id: audiobooks.id,
@@ -503,78 +651,90 @@ app.patch("/:id", async (c) => {
       author: audiobooks.author,
       description: audiobooks.description,
       ratings: audiobooks.ratings,
+      visibility: audiobooks.visibility,
       updatedAt: audiobooks.updatedAt,
     });
 
+  await bustInfoCache(c, audiobookId);
   return c.json({ ok: true, book: updated });
 });
 
-const UPLOAD_EXPIRY_SECONDS = 3600;
-const MAX_FILE_SIZE_BYTES = 50 * 1024 * 1024; // 50MB
+const reuploadSchema = z
+  .object({
+    fileName: z.string().optional(),
+    fileSizeBytes: z.number().optional(),
+    text: z.string().optional(),
+  })
+  .refine(
+    (d) => d.text || (d.fileName && d.fileSizeBytes),
+    "Provide either text or (fileName + fileSizeBytes)",
+  );
 
-app.post("/:id/reupload", async (c) => {
-  const audiobookId = c.req.param("id");
-  const db = getDb(c.env.HYPERDRIVE.connectionString);
-  const bucket = storage.getInstance(c.env);
-  const body = await c.req.json();
+app.post(
+  "/:id/reupload",
+  authMiddleware,
+  zValidator("json", reuploadSchema),
+  async (c) => {
+    const audiobookId = c.req.param("id");
+    const db = getDb(c.env.HYPERDRIVE.connectionString);
+    const bucket = storage.getInstance(c.env);
+    const body = c.req.valid("json");
+    const { fileName, fileSizeBytes, text } = body;
 
-  const { userId, fileName, fileSizeBytes, text } = body;
+    // userId now comes from the auth session, not the request body
+    const { id: userId } = c.var.authSession.user;
 
-  if (!userId) return c.json({ error: "Missing userId" }, 400);
+    const [book] = await db
+      .select({ id: audiobooks.id, status: audiobooks.status })
+      .from(audiobooks)
+      .where(eq(audiobooks.id, audiobookId));
 
-  const [book] = await db
-    .select({ id: audiobooks.id, status: audiobooks.status })
-    .from(audiobooks)
-    .where(eq(audiobooks.id, audiobookId));
+    if (!book) return c.json({ error: "Audiobook not found" }, 404);
 
-  if (!book) return c.json({ error: "Audiobook not found" }, 404);
-
-  if (book.status === "processing") {
-    return c.json(
-      {
-        error: "Cannot reupload while audiobook is being processed",
-        status: book.status,
-      },
-      409,
-    );
-  }
-
-  console.log(`[re-upload] Request for audiobook ${audiobookId}`);
-
-  const bucketName = c.env.RAW_BUCKET_NAME;
-
-  // Abort any still-open multipart session before starting fresh
-  const [existingAsset] = await db
-    .select({
-      uploadId: assets.uploadId,
-      s3Key: assets.s3Key,
-      uploadStatus: assets.uploadStatus,
-    })
-    .from(assets)
-    .where(eq(assets.audiobookId, audiobookId));
-
-  if (
-    existingAsset?.uploadId &&
-    existingAsset.uploadStatus === "pending_upload"
-  ) {
-    try {
-      await bucket.abortMultipartUpload(
-        bucketName,
-        existingAsset.s3Key!,
-        existingAsset.uploadId,
+    if (book.status === "processing") {
+      return c.json(
+        {
+          error: "Cannot reupload while audiobook is being processed",
+          status: book.status,
+        },
+        409,
       );
-      console.log(
-        `[re-upload] Aborted stale multipart session for book ${audiobookId}`,
-      );
-    } catch (e: any) {
-      // 404 = already gone, safe to ignore
-      if (e?.$metadata?.httpStatusCode !== 404) {
-        console.warn("[re-upload] Could not abort existing session:", e);
+    }
+
+    console.log(`[re-upload] Request for audiobook ${audiobookId}`);
+
+    const bucketName = c.env.RAW_BUCKET_NAME;
+
+    // Abort any still-open multipart session before starting fresh
+    const [existingAsset] = await db
+      .select({
+        uploadId: assets.uploadId,
+        s3Key: assets.s3Key,
+        uploadStatus: assets.uploadStatus,
+      })
+      .from(assets)
+      .where(eq(assets.audiobookId, audiobookId));
+
+    if (
+      existingAsset?.uploadId &&
+      existingAsset.uploadStatus === "pending_upload"
+    ) {
+      try {
+        await bucket.abortMultipartUpload(
+          bucketName,
+          existingAsset.s3Key!,
+          existingAsset.uploadId,
+        );
+        console.log(
+          `[re-upload] Aborted stale multipart session for book ${audiobookId}`,
+        );
+      } catch (e: any) {
+        // 404 = already gone, safe to ignore
+        if (e?.$metadata?.httpStatusCode !== 404) {
+          console.warn("[re-upload] Could not abort existing session:", e);
+        }
       }
     }
-  }
-
-  try {
     // Direct text reupload
     if (text && typeof text === "string") {
       const textBytes = new TextEncoder().encode(text);
@@ -663,7 +823,7 @@ app.post("/:id/reupload", async (c) => {
       .where(eq(audiobooks.id, audiobookId));
 
     // Replace asset row so the uploadId is fresh
-    // await db.delete(assets).where(eq(assets.audiobookId, audiobookId));
+    await db.delete(assets).where(eq(assets.audiobookId, audiobookId));
     await db.insert(assets).values({
       audiobookId,
       type: "raw_upload",
@@ -692,23 +852,7 @@ app.post("/:id/reupload", async (c) => {
       fileKey: rawUploadKey,
       expiresAt: uploadExpiresAt.toISOString(),
     });
-  } catch (error: any) {
-    const msg = error?.message ?? "Unknown error";
-    console.error(`[re-upload] Book ${audiobookId}:`, error);
-
-    await db
-      .update(audiobooks)
-      .set({ status: "failed", errorMessage: `Re-upload failed: ${msg}` })
-      .where(eq(audiobooks.id, audiobookId))
-      .catch((e) =>
-        console.error("[re-upload] Failed to write error state:", e),
-      );
-
-    return c.json(
-      { error: "Failed to initialise re-upload", details: msg },
-      500,
-    );
-  }
-});
+  },
+);
 
 export default app;
