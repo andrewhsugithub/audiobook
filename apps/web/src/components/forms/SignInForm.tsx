@@ -36,34 +36,39 @@ export function SignInForm() {
   })
 
   return (
-    <div className="max-w-sm mx-auto p-6">
-      <h2 className="text-2xl font-bold mb-6">Sign In</h2>
+    <div className="auth-card w-full max-w-md rounded-3xl p-8 sm:p-10">
+      <p className="island-kicker mb-2">Welcome back</p>
+      <h2 className="display-title text-3xl font-bold sm:text-4xl">Sign in</h2>
+      <p className="mt-2 mb-8 text-sm text-[var(--sea-ink-soft)]">
+        Pick up right where you left off in your library.
+      </p>
       <form
         onSubmit={(e) => {
           e.preventDefault()
           e.stopPropagation()
           form.handleSubmit()
         }}
-        className="space-y-4"
+        className="space-y-5"
       >
         <form.Field
           name="email"
           children={(field) => (
-            <div className="space-y-1">
+            <div className="space-y-1.5">
               <label htmlFor={field.name} className="field-label">
                 Email
               </label>
               <input
                 id={field.name}
                 type="email"
+                autoComplete="email"
                 value={field.state.value}
                 onBlur={field.handleBlur}
                 onChange={(e) => field.handleChange(e.target.value)}
-                className="field-input"
+                className="field-input field-input-lg"
                 placeholder="you@example.com"
               />
               {field.state.meta.errors.length > 0 && (
-                <p className="text-sm text-red-400">
+                <p className="text-sm text-error">
                   {field.state.meta.errors
                     .map((err: any) => err?.message ?? err)
                     .join(', ')}
@@ -76,21 +81,22 @@ export function SignInForm() {
         <form.Field
           name="password"
           children={(field) => (
-            <div className="space-y-1">
+            <div className="space-y-1.5">
               <label htmlFor={field.name} className="field-label">
                 Password
               </label>
               <input
                 id={field.name}
                 type="password"
+                autoComplete="current-password"
                 value={field.state.value}
                 onBlur={field.handleBlur}
                 onChange={(e) => field.handleChange(e.target.value)}
-                className="field-input"
+                className="field-input field-input-lg"
                 placeholder="••••••••"
               />
               {field.state.meta.errors.length > 0 && (
-                <p className="text-sm text-red-400">
+                <p className="text-sm text-error">
                   {field.state.meta.errors
                     .map((err: any) => err?.message ?? err)
                     .join(', ')}
@@ -106,7 +112,7 @@ export function SignInForm() {
             <button
               type="submit"
               disabled={!canSubmit}
-              className="btn-primary w-full py-3 island-shell"
+              className="btn btn-primary btn-lg btn-block mt-2"
             >
               {isSubmitting ? 'Signing in…' : 'Sign In'}
             </button>
