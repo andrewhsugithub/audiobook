@@ -1,4 +1,4 @@
-import { Link, useRouter } from '@tanstack/react-router'
+import { useRouter } from '@tanstack/react-router'
 import ThemeToggle from './ThemeToggle'
 
 import { FaArrowLeft } from 'react-icons/fa'
@@ -10,7 +10,9 @@ type Props = {
   backSearch?: Record<string, string>
 }
 
-export default function Header({ title, right, backTo, backSearch }: Props) {
+// Note: `backTo`/`backSearch` are accepted for call-site compatibility but the
+// back button uses browser history (router.history.back()) instead.
+export default function Header({ title, right }: Props) {
   const router = useRouter()
 
   return (
@@ -19,14 +21,14 @@ export default function Header({ title, right, backTo, backSearch }: Props) {
       <button
         onClick={() => router.history.back()}
         aria-label="Go back"
-        className="relative z-10 flex items-center gap-2 text-xl opacity-70 transition-all duration-300 hover:opacity-100"
+        className="btn btn-ghost btn-circle btn-sm relative z-10"
       >
         <FaArrowLeft aria-hidden="true" />
       </button>
 
       {/* Current Library */}
-      <div className="pointer-events-none absolute left-1/2 -translate-x-1/2">
-        <h1 className="display-title text-2xl font-bold whitespace-nowrap">
+      <div className="pointer-events-none absolute left-1/2 max-w-[min(52vw,34rem)] -translate-x-1/2 px-2">
+        <h1 className="display-title truncate text-2xl font-bold">
           {title || 'Library'}
         </h1>
       </div>
