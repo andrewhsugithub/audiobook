@@ -66,12 +66,16 @@
   --inset-glint: rgba(194, 247, 238, 0.14);
   --kicker: #b8efe5;
   --bg-base: #0a1418;
-  --header-bg: rgba(10, 20, 24, 0.8);
+  --header-bg: linear-gradient(90deg, #10242b 0%, #17343d 50%, #10242b 100%);
   --chip-bg: rgba(13, 28, 32, 0.9);
   --chip-line: rgba(141, 229, 219, 0.24);
   --link-bg-hover: rgba(24, 44, 49, 0.8);
   --hero-a: rgba(96, 215, 207, 0.18);
   --hero-b: rgba(110, 200, 154, 0.12);
+  --bookmark-bg: rgba(0, 0, 0, 0.08);
+  --bookmark-bg-hover: rgba(0, 0, 0, 0.14);
+  --bookmark-icon: rgba(20, 40, 40, 0.75);
+  --bookmark-active: #0f766e;
 }
 
 @media (prefers-color-scheme: dark) {
@@ -89,12 +93,16 @@
     --inset-glint: rgba(194, 247, 238, 0.14);
     --kicker: #b8efe5;
     --bg-base: #0a1418;
-    --header-bg: rgba(10, 20, 24, 0.8);
+    --header-bg: linear-gradient(90deg, #143038 0%, #1c4550 50%, #143038 100%);
     --chip-bg: rgba(13, 28, 32, 0.9);
     --chip-line: rgba(141, 229, 219, 0.24);
     --link-bg-hover: rgba(24, 44, 49, 0.8);
     --hero-a: rgba(96, 215, 207, 0.18);
     --hero-b: rgba(110, 200, 154, 0.12);
+    --bookmark-bg: rgba(255, 255, 255, 0.1);
+    --bookmark-bg-hover: rgba(255, 255, 255, 0.2);
+    --bookmark-icon: rgba(255, 255, 255, 0.75);
+    --bookmark-active: #67e8f9;
   }
 }
 

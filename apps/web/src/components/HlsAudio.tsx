@@ -31,7 +31,6 @@ export function HlsAudioPlayer({ src, title }: HlsAudioPlayerProps) {
 
   return (
     <div className="hls-audio-player">
-      {title && <p className="stream-title">{title}</p>}
       <ErrorBoundary fallback={<PlayerFallback />}>
         <Player.Provider>
           <AudioSkin>
