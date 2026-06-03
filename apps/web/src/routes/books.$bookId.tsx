@@ -14,6 +14,7 @@ import {
   useAddToLibrary,
   useRemoveFromLibrary,
 } from '../hooks/useLibrary'
+import BookmarkButton from '../components/BookmarkButton' // Component used below
 import { API_BASE_URL as BASE_URL } from '../utils/api'
 import { useToast } from '../components/Toast'
 
@@ -97,24 +98,25 @@ function BookComponent() {
     setCoverPreview(null)
   }
 
-  const addToMyLibrary = () => {
+  // Consolidated click coordinator for the single bookmark toggle
+  const handleBookmarkToggle = () => {
     if (!isLoggedIn) {
       toast.error('Sign in to save books to your library.')
       return
     }
-    if (isInLibrary || !book) return
-    addToLibrary.mutate(book.id, {
-      onError: (err) => toast.error(err.message),
-      onSuccess: () => toast.success('Added to your library.'),
-    })
-  }
-
-  const removeFromMyLibrary = () => {
     if (!book) return
-    removeFromLibrary.mutate(book.id, {
-      onError: (err) => toast.error(err.message),
-      onSuccess: () => toast.success('Removed from library.'),
-    })
+
+    if (isInLibrary) {
+      removeFromLibrary.mutate(book.id, {
+        onError: (err) => toast.error(err.message),
+        onSuccess: () => toast.success('Removed from library.'),
+      })
+    } else {
+      addToLibrary.mutate(book.id, {
+        onError: (err) => toast.error(err.message),
+        onSuccess: () => toast.success('Added to your library.'),
+      })
+    }
   }
 
   if (isInfoError) {
@@ -264,27 +266,14 @@ function BookComponent() {
               </span>
 
               {/* ── Library Sync Interactive Actions Area ──────────────── */}
-              <div className="mt-8 flex gap-3">
-                {isLoggedIn ? (
-                  isInLibrary ? (
-                    <button
-                      onClick={removeFromMyLibrary}
-                      disabled={isInfoLoading || removeFromLibrary.isPending}
-                      className="rounded-full px-6 py-3 transition-all duration-300 font-medium bg-white/10 border border-white/10 hover:bg-red-500/10 hover:border-red-500/20 hover:text-red-400"
-                    >
-                      {removeFromLibrary.isPending
-                        ? 'Removing…'
-                        : '✓ In My Library'}
-                    </button>
-                  ) : (
-                    <button
-                      onClick={addToMyLibrary}
-                      disabled={isInfoLoading || addToLibrary.isPending}
-                      className="rounded-full px-6 py-3 transition-all duration-300 font-medium island-shell hover:scale-105 disabled:opacity-50"
-                    >
-                      {addToLibrary.isPending ? 'Saving…' : '+ My Library'}
-                    </button>
-                  )
+              <div className="mt-8 flex gap-3 h-12 items-center">
+                {isInfoLoading ? (
+                  <div className="h-12 w-12 rounded-full animate-pulse bg-white/10" />
+                ) : isLoggedIn ? (
+                  <BookmarkButton
+                    isInLibrary={isInLibrary}
+                    onClick={handleBookmarkToggle}
+                  />
                 ) : (
                   <Link
                     to="/sign-in"
@@ -293,6 +282,13 @@ function BookComponent() {
                     Sign In to Save
                   </Link>
                 )}
+
+                {/* Visual Mutation Progress Indicator
+                {(addToLibrary.isPending || removeFromLibrary.isPending) && (
+                  <span className="text-xs text-white/40 animate-pulse font-medium">
+                    Syncing library…
+                  </span>
+                )} */}
               </div>
 
               {/* Description */}

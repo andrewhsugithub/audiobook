@@ -7,6 +7,10 @@
   --font-sans: 'Manrope', ui-sans-serif, system-ui, sans-serif;
 }
 
+.media-default-skin video {
+  display: none !important;
+}
+
 :root {
   --sea-ink: #173a40;
   --sea-ink-soft: #416166;
