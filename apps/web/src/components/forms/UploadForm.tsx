@@ -141,14 +141,14 @@ export function UploadForm({ existingBookId, existingTitle }: Props) {
   }
 
   return (
-    <div className="max-w-lg mx-auto p-6 h-screen">
+    <div className="mx-auto w-full max-w-lg p-6">
       <h2 className="text-xl font-semibold mb-4">
         {isReupload
           ? `Replace file for "${existingTitle}"`
           : 'Upload Audiobook'}
       </h2>
 
-      <div className="flex border-b border-white/10 mb-6" role="tablist">
+      <div className="tabs tabs-border mb-6" role="tablist">
         {(['file', 'text'] as const).map((tab) => (
           <button
             key={tab}
@@ -156,11 +156,7 @@ export function UploadForm({ existingBookId, existingTitle }: Props) {
             role="tab"
             aria-selected={activeTab === tab}
             onClick={() => setActiveTab(tab)}
-            className={`px-4 py-2 text-sm capitalize transition-colors ${
-              activeTab === tab
-                ? 'border-b-2 border-white text-white'
-                : 'opacity-50 hover:opacity-75'
-            }`}
+            className={`tab ${activeTab === tab ? 'tab-active' : ''}`}
           >
             {tab === 'file' ? 'PDF / TXT File' : 'Paste Text'}
           </button>
@@ -201,7 +197,7 @@ export function UploadForm({ existingBookId, existingTitle }: Props) {
                 className={`rounded-lg border border-dashed p-4 text-sm transition-colors ${
                   isDragging
                     ? 'border-[var(--lagoon)] bg-[var(--lagoon)]/10'
-                    : 'border-white/20'
+                    : 'border-[var(--line)]'
                 }`}
               >
                 <input
@@ -211,7 +207,7 @@ export function UploadForm({ existingBookId, existingTitle }: Props) {
                   accept=".pdf,.txt"
                   disabled={isActive}
                   onChange={(e) => pickFile(e.target.files?.[0] ?? null)}
-                  className="w-full text-sm file:mr-4 file:py-2 file:px-4 file:border-0 file:bg-white/10 file:rounded file:cursor-pointer"
+                  className="w-full text-sm text-[var(--sea-ink-soft)] file:mr-4 file:cursor-pointer file:rounded-lg file:border-0 file:bg-[var(--surface-strong)] file:px-4 file:py-2 file:font-medium file:text-[var(--sea-ink)]"
                 />
                 <p className="mt-2 opacity-60">
                   {selectedFile
@@ -295,7 +291,7 @@ function FieldAlert({ message }: { message: string }) {
   return (
     <p
       role="alert"
-      className="text-sm text-red-400 p-3 bg-red-500/10 rounded border border-red-500/20"
+      className="text-sm text-error p-3 bg-red-500/10 rounded border border-red-500/20"
     >
       {message}
     </p>
@@ -324,7 +320,7 @@ function UploadActions({
       {isActive ? (
         <>
           <div
-            className="w-full bg-white/10 rounded-full h-2 overflow-hidden"
+            className="w-full bg-[var(--line)] rounded-full h-2 overflow-hidden"
             role="progressbar"
             aria-valuemin={0}
             aria-valuemax={100}
@@ -332,7 +328,7 @@ function UploadActions({
             aria-label={STATUS_LABELS[status]}
           >
             <div
-              className={`bg-white h-2 rounded-full transition-all duration-300 ${indeterminate ? 'w-1/3 animate-pulse' : ''}`}
+              className={`bg-[var(--lagoon-deep)] h-2 rounded-full transition-all duration-300 ${indeterminate ? 'w-1/3 animate-pulse' : ''}`}
               style={indeterminate ? undefined : { width: `${progress}%` }}
             />
           </div>
@@ -347,7 +343,7 @@ function UploadActions({
           <button
             type="button"
             onClick={onAbort}
-            className="w-full py-2 text-sm border border-red-500/30 text-red-400 rounded hover:bg-red-500/10 transition-colors"
+            className="btn btn-outline btn-error btn-sm btn-block"
           >
             Cancel Upload
           </button>
@@ -357,7 +353,7 @@ function UploadActions({
           {error && (
             <p
               role="alert"
-              className="text-sm text-red-400 p-3 bg-red-500/10 rounded border border-red-500/20"
+              className="text-sm text-error p-3 bg-red-500/10 rounded border border-red-500/20"
             >
               {error}
               <button
@@ -370,7 +366,7 @@ function UploadActions({
             </p>
           )}
           {status === 'done' && (
-            <p className="text-sm text-green-400">
+            <p className="text-sm text-success">
               ✓ Upload complete — processing started
             </p>
           )}
@@ -378,7 +374,7 @@ function UploadActions({
             <button
               type="submit"
               disabled={isActive}
-              className="btn-primary w-full py-3 island-shell"
+              className="btn btn-primary btn-block"
             >
               Upload
             </button>

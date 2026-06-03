@@ -12,20 +12,16 @@ export default function BookmarkButton({
   return (
     <div className="group relative">
       <button
+        type="button"
         onClick={onClick}
-        className="
-          flex h-12 w-12 items-center justify-center
-          rounded-full
-          border border-white/10
-          bg-[var(--chip-line)]
-          transition-all duration-200
-          hover:bg-[var(--chip-bg)]
-        "
+        aria-label={isInLibrary ? 'Remove from Library' : 'Add to Library'}
+        aria-pressed={isInLibrary}
+        className="btn btn-circle btn-lg btn-soft"
       >
         <Bookmark
           className={`
             h-6 w-6 transition-all duration-200
-            ${isInLibrary ? 'fill-current text-[var(--bookmark-active)]' : 'text-[var(--bookmark-icon)]'}
+            ${isInLibrary ? 'fill-current text-[var(--bookmark-active)]' : ''}
           `}
         />
       </button>

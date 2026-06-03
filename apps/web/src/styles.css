@@ -32,6 +32,41 @@
   --hero-a: rgba(79, 184, 178, 0.36);
   --hero-b: rgba(47, 106, 74, 0.2);
 
+  /* Bookmark active-state colour for the default (light) theme — dark theme
+     overrides live in the [data-theme='dark'] / prefers-color-scheme blocks. */
+  --bookmark-active: #0f766e;
+
+  /* daisyUI v5 theme tokens — sea palette (light). Drives btn/input/toggle/range. */
+  color-scheme: light;
+  --color-base-100: #f7fbf7;
+  --color-base-200: #e7f0e8;
+  --color-base-300: #d4e6d8;
+  --color-base-content: #173a40;
+  --color-primary: #2f8f8a;
+  --color-primary-content: #ffffff;
+  --color-secondary: #2f6a4a;
+  --color-secondary-content: #ffffff;
+  --color-accent: #4fb8b2;
+  --color-accent-content: #06302f;
+  --color-neutral: #173a40;
+  --color-neutral-content: #f3faf5;
+  --color-info: #2f81b5;
+  --color-info-content: #ffffff;
+  --color-success: #1f8a5b;
+  --color-success-content: #ffffff;
+  --color-warning: #c0852a;
+  --color-warning-content: #2a1c00;
+  --color-error: #c0392b;
+  --color-error-content: #ffffff;
+  --radius-selector: 1rem;
+  --radius-field: 0.75rem;
+  --radius-box: 1rem;
+  --size-selector: 0.25rem;
+  --size-field: 0.25rem;
+  --border: 1px;
+  --depth: 1;
+  --noise: 0;
+
   --font-outfit:
     Outfit, -apple-system, BlinkMacSystemFont, Segoe UI, Roboto, Oxygen-Sans,
     Ubuntu, Cantarell, Helvetica Neue, sans-serif;
@@ -80,6 +115,29 @@
   --bookmark-bg-hover: rgba(0, 0, 0, 0.14);
   --bookmark-icon: rgba(20, 40, 40, 0.75);
   --bookmark-active: #0f766e;
+
+  /* daisyUI v5 theme tokens — sea palette (dark). */
+  color-scheme: dark;
+  --color-base-100: #122a31;
+  --color-base-200: #16343d;
+  --color-base-300: #1f4651;
+  --color-base-content: #d7ece8;
+  --color-primary: #4fb8b2;
+  --color-primary-content: #06241f;
+  --color-secondary: #6ec89a;
+  --color-secondary-content: #052016;
+  --color-accent: #60d7cf;
+  --color-accent-content: #04231f;
+  --color-neutral: #1f4651;
+  --color-neutral-content: #d7ece8;
+  --color-info: #5bb5e6;
+  --color-info-content: #04242f;
+  --color-success: #4fcf94;
+  --color-success-content: #042a1b;
+  --color-warning: #e3b341;
+  --color-warning-content: #2a1c00;
+  --color-error: #f08a8a;
+  --color-error-content: #2a0606;
 }
 
 @media (prefers-color-scheme: dark) {
@@ -107,6 +165,29 @@
     --bookmark-bg-hover: rgba(255, 255, 255, 0.2);
     --bookmark-icon: rgba(255, 255, 255, 0.75);
     --bookmark-active: #67e8f9;
+
+    /* daisyUI v5 theme tokens — sea palette (auto → dark). */
+    color-scheme: dark;
+    --color-base-100: #122a31;
+    --color-base-200: #16343d;
+    --color-base-300: #1f4651;
+    --color-base-content: #d7ece8;
+    --color-primary: #4fb8b2;
+    --color-primary-content: #06241f;
+    --color-secondary: #6ec89a;
+    --color-secondary-content: #052016;
+    --color-accent: #60d7cf;
+    --color-accent-content: #04231f;
+    --color-neutral: #1f4651;
+    --color-neutral-content: #d7ece8;
+    --color-info: #5bb5e6;
+    --color-info-content: #04242f;
+    --color-success: #4fcf94;
+    --color-success-content: #042a1b;
+    --color-warning: #e3b341;
+    --color-warning-content: #2a1c00;
+    --color-error: #f08a8a;
+    --color-error-content: #2a0606;
   }
 }
 
@@ -139,6 +220,9 @@ body {
       var(--foam) 44%,
       var(--bg-base) 100%
     );
+  /* Anchor the gradient to the viewport so long, scrollable pages (e.g. the
+     book detail page) never show a seam between the gradient end and bg-base. */
+  background-attachment: fixed, fixed, fixed, fixed;
   overflow-x: hidden;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
@@ -326,10 +410,10 @@ a {
   scrollbar-width: none;
 }
 
-/* Shared form primitives — used by the upload form and the book edit form */
+/* Shared form primitives — used across the auth, upload, and book edit forms */
 .field-label {
   display: block;
-  font-size: 0.7rem;
+  font-size: 0.72rem;
   font-weight: 600;
   letter-spacing: 0.08em;
   text-transform: uppercase;
@@ -338,36 +422,53 @@ a {
 
 .field-input {
   width: 100%;
-  border-radius: 0.5rem;
+  border-radius: var(--radius-field, 0.75rem);
   border: 1px solid var(--line);
   background: var(--surface);
-  padding: 0.625rem 0.75rem;
+  padding: 0.7rem 0.85rem;
   color: var(--sea-ink);
-  font-size: 0.875rem;
+  font-size: 0.95rem;
   transition:
     border-color 180ms ease,
-    background-color 180ms ease;
+    background-color 180ms ease,
+    box-shadow 180ms ease;
+}
+
+.field-input::placeholder {
+  color: color-mix(in oklab, var(--sea-ink-soft) 60%, transparent);
 }
 
 .field-input:focus {
   outline: none;
   border-color: var(--lagoon);
   background: var(--surface-strong);
+  box-shadow: 0 0 0 3px color-mix(in oklab, var(--lagoon) 24%, transparent);
 }
 
-.btn-primary {
-  border-radius: 9999px;
-  font-weight: 600;
+/* Larger field variant for the auth screens */
+.field-input-lg {
+  padding: 0.85rem 1rem;
+  font-size: 1rem;
+}
+
+/* Unified button behaviour layered on top of daisyUI's .btn.
+   daisyUI handles size/colour/radius via theme tokens; we add one consistent
+   hover lift + focus ring so every button behaves identically. */
+.btn:not(.btn-ghost):not(.btn-link):not(:disabled):not(.btn-disabled):hover {
+  transform: translateY(-1px);
+}
+
+.btn:focus-visible {
+  outline-offset: 2px;
+}
+
+/* Frosted-glass card used by the auth screens */
+.auth-card {
   border: 1px solid var(--line);
   background: linear-gradient(165deg, var(--surface-strong), var(--surface));
-  transition: transform 180ms ease;
-}
-
-.btn-primary:hover:not(:disabled) {
-  transform: scale(1.03);
-}
-
-.btn-primary:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
+  box-shadow:
+    0 1px 0 var(--inset-glint) inset,
+    0 24px 50px rgba(30, 90, 72, 0.12),
+    0 8px 22px rgba(23, 58, 64, 0.08);
+  backdrop-filter: blur(6px);
 }

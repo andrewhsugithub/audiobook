@@ -25,9 +25,9 @@ interface ToastContextValue {
 const ToastContext = createContext<ToastContextValue | null>(null)
 
 const VARIANT_STYLES: Record<ToastVariant, string> = {
-  success: 'border-green-500/30 bg-green-500/10 text-green-300',
-  error: 'border-red-500/30 bg-red-500/10 text-red-300',
-  info: 'border-white/20 bg-white/10 text-white',
+  success: 'border-green-500/30 bg-green-500/10 text-success',
+  error: 'border-red-500/30 bg-red-500/10 text-error',
+  info: 'border-[var(--line)] bg-[var(--surface-strong)] text-[var(--sea-ink)]',
 }
 
 const VARIANT_ICON: Record<ToastVariant, string> = {

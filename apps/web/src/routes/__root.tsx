@@ -45,7 +45,7 @@ function CenteredMessage({
       <p className="island-kicker mb-2">{kicker}</p>
       <h1 className="display-title mb-4 text-4xl font-bold">{title}</h1>
       {children}
-      <Link to="/" className="island-shell mt-6 rounded-full px-5 py-3">
+      <Link to="/" className="btn btn-primary mt-6">
         Back to Home
       </Link>
     </main>

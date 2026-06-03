@@ -19,6 +19,13 @@ export interface SearchResponse {
   offset: number
 }
 
+export type SortKey =
+  | 'recent'
+  | 'title-asc'
+  | 'title-desc'
+  | 'author-asc'
+  | 'rating-desc'
+
 export interface AudiobookInfo {
   id: string
   status: string
@@ -37,12 +44,14 @@ async function searchAudiobooks(
   query: string,
   limit = 50,
   offset = 0,
+  sort: SortKey = 'recent',
   completeOnly = false,
 ): Promise<SearchResponse> {
   const params = new URLSearchParams({
     q: query,
     limit: String(limit),
     offset: String(offset),
+    sort,
     completeOnly: String(completeOnly),
   })
   const res = await fetch(`${API_URL}/audiobook/search?${params}`, {
@@ -63,12 +72,17 @@ async function fetchAudiobookInfo(bookId: string): Promise<AudiobookInfo> {
   return res.json()
 }
 
-export const searchQuery = (query: string, limit = 50) =>
+export const searchQuery = (
+  query: string,
+  limit = 50,
+  offset = 0,
+  sort: SortKey = 'recent',
+) =>
   queryOptions({
-    queryKey: ['audiobook-search', query, limit],
-    queryFn: () => searchAudiobooks(query, limit),
+    queryKey: ['audiobook-search', query, limit, offset, sort],
+    queryFn: () => searchAudiobooks(query, limit, offset, sort),
     staleTime: 1000 * 30, // 30s — search results can change
-    placeholderData: (prev) => prev, // keep previous results while fetching
+    placeholderData: (prev) => prev, // keep previous page visible while fetching
   })
 
 export const audiobookInfoQuery = (bookId: string) =>

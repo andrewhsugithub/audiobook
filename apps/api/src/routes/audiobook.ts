@@ -52,6 +52,9 @@ const searchSchema = z.object({
   q: z.string().default(""),
   limit: z.coerce.number().min(1).max(50).default(30),
   offset: z.coerce.number().min(0).default(0),
+  sort: z
+    .enum(["recent", "title-asc", "title-desc", "author-asc", "rating-desc"])
+    .default("recent"),
   completeOnly: z
     .string()
     .transform((v) => v === "true")
@@ -436,7 +439,7 @@ app.get("/:id/:filename{.+}", async (c) => {
 });
 
 app.get("/search", zValidator("query", searchSchema), async (c) => {
-  const { q: query, limit, offset, completeOnly } = c.req.valid("query");
+  const { q: query, limit, offset, sort, completeOnly } = c.req.valid("query");
   const db = getDb(c.env.HYPERDRIVE.connectionString);
 
   // Try to get the current user from the session cookie (optional auth)
@@ -489,27 +492,52 @@ app.get("/search", zValidator("query", searchSchema), async (c) => {
         )
       : baseCondition;
 
-  const results = await db
-    .select({
-      id: audiobooks.id,
-      title: audiobooks.title,
-      author: audiobooks.author,
-      description: audiobooks.description,
-      ratings: audiobooks.ratings,
-      coverBucketName: audiobooks.coverBucketName,
-      coverS3Key: audiobooks.coverS3Key,
-      status: audiobooks.status,
-      visibility: audiobooks.visibility,
-      userId: audiobooks.userId,
-    })
-    .from(audiobooks)
-    .where(searchCondition)
-    .orderBy(
-      asc(sql`CASE WHEN ${audiobooks.status} = 'completed' THEN 0 ELSE 1 END`),
-      desc(audiobooks.updatedAt),
-    )
-    .limit(limit)
-    .offset(offset);
+  // Map the requested sort to an ORDER BY clause. Default ("recent") keeps the
+  // original behaviour: completed books first, then most recently updated.
+  const orderBy =
+    sort === "title-asc"
+      ? [asc(audiobooks.title)]
+      : sort === "title-desc"
+        ? [desc(audiobooks.title)]
+        : sort === "author-asc"
+          ? [sql`${audiobooks.author} ASC NULLS LAST`]
+          : sort === "rating-desc"
+            ? [sql`${audiobooks.ratings} DESC NULLS LAST`]
+            : [
+                asc(
+                  sql`CASE WHEN ${audiobooks.status} = 'completed' THEN 0 ELSE 1 END`,
+                ),
+                desc(audiobooks.updatedAt),
+              ];
+
+  // Run the page query and a matching count query in parallel so the client
+  // gets a real total to paginate against (not just the current page length).
+  const [results, countRows] = await Promise.all([
+    db
+      .select({
+        id: audiobooks.id,
+        title: audiobooks.title,
+        author: audiobooks.author,
+        description: audiobooks.description,
+        ratings: audiobooks.ratings,
+        coverBucketName: audiobooks.coverBucketName,
+        coverS3Key: audiobooks.coverS3Key,
+        status: audiobooks.status,
+        visibility: audiobooks.visibility,
+        userId: audiobooks.userId,
+      })
+      .from(audiobooks)
+      .where(searchCondition)
+      .orderBy(...orderBy)
+      .limit(limit)
+      .offset(offset),
+    db
+      .select({ total: sql<number>`count(*)::int` })
+      .from(audiobooks)
+      .where(searchCondition),
+  ]);
+
+  const total = countRows[0]?.total ?? 0;
 
   const baseUrl = new URL(c.req.url).origin;
 
@@ -534,7 +562,7 @@ app.get("/search", zValidator("query", searchSchema), async (c) => {
 
   return c.json({
     results: mapped,
-    total: mapped.length,
+    total,
     query,
     limit,
     offset,
