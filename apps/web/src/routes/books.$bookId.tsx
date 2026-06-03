@@ -121,7 +121,7 @@ function BookComponent() {
 
   if (isInfoError) {
     return (
-      <div className="min-w-[360px] p-6 text-center text-red-400">
+      <div className="min-w-[360px] p-6 text-center text-error">
         <p className="font-semibold">Failed to load audiobook metadata:</p>
         <p className="text-sm opacity-70">{infoError?.message}</p>
       </div>
@@ -141,19 +141,19 @@ function BookComponent() {
         <div className="max-w-212.5 mx-auto px-4 mt-4 flex justify-end">
           <button
             onClick={() => setIsEditing((prev) => !prev)}
-            className="bg-white/10 hover:bg-white/20 text-white px-4 py-2 rounded-lg transition-colors text-sm font-medium"
+            className={`btn btn-sm ${isEditing ? 'btn-ghost' : 'btn-soft'}`}
           >
             {isEditing ? 'Cancel Edit Mode' : '✏️ Edit Book'}
           </button>
         </div>
       )}
 
-      <main className="p-2.5 content-start max-w-212.5 mx-auto gap-10 grid min-[551px]:grid-cols-[minmax(150px,1fr)_1.5fr] h-screen">
+      <main className="mx-auto grid max-w-212.5 grid-cols-1 items-start gap-10 p-2.5 pt-6 min-[551px]:grid-cols-[minmax(160px,1fr)_1.6fr]">
         {/* ── Cover Element ───────────────────────────────────────────── */}
-        <div className="group [perspective:900px] relative">
-          <span className="grid place-content-center overflow-hidden relative aspect-1/1.5 border border-solid border-[rgba(245,240,214,0.12)] shadow-[0.25rem_0.25rem_0_#0f0d0e] bg-neutral-900 rounded-sm">
+        <div className="group relative [perspective:900px] min-[551px]:sticky min-[551px]:top-6">
+          <span className="grid place-content-center overflow-hidden relative aspect-1/1.5 border border-solid border-[var(--line)] shadow-xl bg-[var(--surface-strong)] rounded-xl">
             {isInfoLoading ? (
-              <div className="animate-pulse text-xs opacity-40">
+              <div className="animate-pulse text-xs text-[var(--sea-ink-soft)]">
                 Loading Cover…
               </div>
             ) : coverPreview || book?.coverUrl ? (
@@ -161,11 +161,11 @@ function BookComponent() {
                 src={coverPreview || book?.coverUrl}
                 alt={book?.title || 'Book cover'}
                 className={`min-w-full min-h-full top-0 left-0 absolute object-cover transition-opacity ${
-                  isEditing ? 'opacity-40' : 'opacity-100'
+                  isEditing ? 'opacity-70' : 'opacity-100'
                 }`}
               />
             ) : (
-              <span className="text-xs opacity-40">No Cover</span>
+              <span className="text-xs text-[var(--sea-ink-soft)]">No Cover</span>
             )}
 
             {/* Direct Image Placement Input Layer Overlay */}
@@ -174,12 +174,12 @@ function BookComponent() {
                 <button
                   type="button"
                   onClick={() => fileInputRef.current?.click()}
-                  className="px-3 py-1.5 bg-white text-black hover:bg-white/90 rounded-md text-xs font-semibold shadow transition-colors"
+                  className="btn btn-sm btn-primary"
                 >
                   📷 {coverPreview ? 'Change' : 'Upload'} Cover
                 </button>
                 {coverPreview && (
-                  <span className="text-[10px] text-green-400 font-medium bg-green-950/80 px-2 py-0.5 rounded border border-green-500/20">
+                  <span className="rounded border border-[var(--line)] bg-[var(--surface-strong)] px-2 py-1 text-xs font-medium text-success">
                     New Image Selected
                   </span>
                 )}
@@ -196,7 +196,7 @@ function BookComponent() {
         </div>
 
         {/* ── Details Module ──────────────────────────────────────────── */}
-        <div className="flex flex-col justify-center">
+        <div className="flex flex-col">
           {isEditing && book ? (
             <>
               <EditBookForm
@@ -208,8 +208,8 @@ function BookComponent() {
 
               {/* Reupload section inside edit mode */}
               {userId && (
-                <div className="mt-12 border-t border-white/10 pt-8">
-                  <h3 className="text-lg font-semibold mb-4 text-white/80">
+                <div className="mt-12 border-t border-[var(--line)] pt-8">
+                  <h3 className="text-lg font-semibold mb-4 text-[var(--sea-ink)]">
                     Replace Audio Content
                   </h3>
                   <UploadForm
@@ -224,7 +224,7 @@ function BookComponent() {
               {/* ── Read-only view ─────────────────────────────────────── */}
               <h2 className="display-title text-3xl font-bold">
                 {isInfoLoading ? (
-                  <span className="animate-pulse bg-white/10 rounded h-8 w-48 block" />
+                  <span className="animate-pulse bg-[var(--line)] rounded h-8 w-48 block" />
                 ) : (
                   book?.title
                 )}
@@ -232,7 +232,7 @@ function BookComponent() {
 
               <small className="mt-4 text-xl uppercase opacity-70 block">
                 {isInfoLoading ? (
-                  <span className="animate-pulse bg-white/5 rounded h-5 w-24 block" />
+                  <span className="animate-pulse bg-[var(--line)] rounded h-5 w-24 block" />
                 ) : (
                   book?.author || 'Anonymous Author'
                 )}
@@ -240,13 +240,13 @@ function BookComponent() {
 
               <div className="mt-4 flex items-center gap-2 text-sm font-semibold tracking-wide">
                 {isInfoLoading ? (
-                  <span className="animate-pulse bg-white/5 rounded h-5 w-24 block" />
+                  <span className="animate-pulse bg-[var(--line)] rounded h-5 w-24 block" />
                 ) : (
                   <span
                     className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs uppercase ${
                       book?.visibility === 'public'
-                        ? 'bg-green-500/10 text-green-400 border border-green-500/20'
-                        : 'bg-white/5 text-white/50 border border-white/10'
+                        ? 'bg-green-500/10 text-success border border-green-500/20'
+                        : 'bg-[var(--chip-bg)] text-[var(--sea-ink-soft)] border border-[var(--line)]'
                     }`}
                   >
                     <span>{book?.visibility === 'public' ? '🌐' : '🔒'}</span>
@@ -268,17 +268,14 @@ function BookComponent() {
               {/* ── Library Sync Interactive Actions Area ──────────────── */}
               <div className="mt-8 flex gap-3 h-12 items-center">
                 {isInfoLoading ? (
-                  <div className="h-12 w-12 rounded-full animate-pulse bg-white/10" />
+                  <div className="h-12 w-12 rounded-full animate-pulse bg-[var(--line)]" />
                 ) : isLoggedIn ? (
                   <BookmarkButton
                     isInLibrary={isInLibrary}
                     onClick={handleBookmarkToggle}
                   />
                 ) : (
-                  <Link
-                    to="/sign-in"
-                    className="rounded-full px-6 py-3 transition-all duration-300 font-medium bg-white/5 hover:bg-white/10 inline-block text-center text-sm"
-                  >
+                  <Link to="/sign-in" className="btn btn-primary">
                     Sign In to Save
                   </Link>
                 )}
@@ -295,9 +292,9 @@ function BookComponent() {
               <div className="mt-10 max-w-3xl leading-8 text-[var(--sea-ink-soft)]">
                 {isInfoLoading ? (
                   <div className="space-y-2 animate-pulse">
-                    <div className="h-4 bg-white/5 rounded w-full" />
-                    <div className="h-4 bg-white/5 rounded w-5/6" />
-                    <div className="h-4 bg-white/5 rounded w-4/6" />
+                    <div className="h-4 bg-[var(--line)] rounded w-full" />
+                    <div className="h-4 bg-[var(--line)] rounded w-5/6" />
+                    <div className="h-4 bg-[var(--line)] rounded w-4/6" />
                   </div>
                 ) : (
                   book?.description || (
@@ -310,20 +307,20 @@ function BookComponent() {
               <div className="mt-6 min-h-[60px] flex flex-col justify-center">
                 {book?.isReady === false &&
                   (book.status === 'initiated' ? (
-                    <div className="text-sm text-red-400 p-3 bg-red-500/10 rounded-lg border border-red-500/20">
+                    <div className="text-sm text-error p-3 bg-red-500/10 rounded-lg border border-red-500/20">
                       ❌ No content is currently available for this audiobook.
                       <br />
                       Please provide content to process.
                     </div>
                   ) : book.status === 'failed' ? (
-                    <div className="text-sm text-red-400 p-3 bg-red-500/10 rounded-lg border border-red-500/20">
+                    <div className="text-sm text-error p-3 bg-red-500/10 rounded-lg border border-red-500/20">
                       ❌ This audiobook failed to process.{' '}
                       {book.errorMessage
                         ? `Error: ${book.errorMessage}`
                         : 'Please try re-uploading the content.'}
                     </div>
                   ) : (
-                    <div className="text-sm text-yellow-400 p-3 bg-yellow-500/10 rounded-lg border border-yellow-500/20">
+                    <div className="text-sm text-warning p-3 bg-yellow-500/10 rounded-lg border border-yellow-500/20">
                       ⚠️ This audiobook is still being processed. Check back
                       later!
                     </div>
@@ -334,7 +331,7 @@ function BookComponent() {
                   </div>
                 )}
                 {isStreamError && (
-                  <div className="text-sm text-red-400 p-3 bg-red-500/10 rounded-lg border border-red-500/20">
+                  <div className="text-sm text-error p-3 bg-red-500/10 rounded-lg border border-red-500/20">
                     ⚠️ Secure Stream Error: {streamError.message}
                   </div>
                 )}

@@ -71,24 +71,27 @@ export function EditBookForm({ book, coverFile, clearCover, onClose }: Props) {
         e.stopPropagation()
         form.handleSubmit()
       }}
-      className="space-y-6"
+      className="space-y-5"
     >
+      <p className="island-kicker">Edit details</p>
+
       {/* Title */}
       <form.Field name="title">
         {(field) => (
-          <div className="space-y-1">
-            <label className="text-xs uppercase tracking-wider text-white/50 font-medium">
+          <div className="space-y-1.5">
+            <label htmlFor={field.name} className="field-label">
               Title
             </label>
             <input
+              id={field.name}
               type="text"
               value={field.state.value}
               onBlur={field.handleBlur}
               onChange={(e) => field.handleChange(e.target.value)}
-              className="text-2xl font-bold bg-white/5 border border-white/20 rounded-lg p-3 text-white w-full focus:outline-none focus:border-white/40 transition-colors"
+              className="field-input text-xl font-bold"
             />
             {field.state.meta.errors.length > 0 && (
-              <p className="text-sm text-red-400">
+              <p className="text-sm text-error">
                 {field.state.meta.errors
                   .map((e: any) => e?.message ?? e)
                   .join(', ')}
@@ -101,16 +104,17 @@ export function EditBookForm({ book, coverFile, clearCover, onClose }: Props) {
       {/* Author */}
       <form.Field name="author">
         {(field) => (
-          <div className="space-y-1">
-            <label className="text-xs uppercase tracking-wider text-white/50 font-medium">
+          <div className="space-y-1.5">
+            <label htmlFor={field.name} className="field-label">
               Author
             </label>
             <input
+              id={field.name}
               type="text"
               value={field.state.value}
               onBlur={field.handleBlur}
               onChange={(e) => field.handleChange(e.target.value)}
-              className="bg-white/5 border border-white/20 rounded-lg p-3 text-white w-full uppercase focus:outline-none focus:border-white/40 transition-colors"
+              className="field-input uppercase"
             />
           </div>
         )}
@@ -119,11 +123,12 @@ export function EditBookForm({ book, coverFile, clearCover, onClose }: Props) {
       {/* Rating */}
       <form.Field name="ratings">
         {(field) => (
-          <div className="space-y-1">
-            <label className="text-xs uppercase tracking-wider text-white/50 font-medium block">
+          <div className="space-y-1.5">
+            <label htmlFor={field.name} className="field-label">
               Rating — {field.state.value.toFixed(1)} / 5
             </label>
             <input
+              id={field.name}
               type="range"
               min="0"
               max="5"
@@ -132,125 +137,99 @@ export function EditBookForm({ book, coverFile, clearCover, onClose }: Props) {
               onChange={(e) =>
                 field.handleChange(parseFloat(e.target.value) || 0)
               }
-              className="w-full accent-white"
+              className="range range-primary range-sm w-full"
             />
           </div>
         )}
       </form.Field>
 
-      {/* Visibility toggle */}
+      {/* Visibility */}
       <form.Field name="visibility">
-        {(field) => (
-          <div className="space-y-2">
-            <label className="text-xs uppercase tracking-wider text-white/50 font-medium block">
-              Visibility
-            </label>
-            <button
-              type="button"
-              onClick={() =>
-                field.handleChange(
-                  field.state.value === 'public' ? 'private' : 'public',
-                )
-              }
-              className={`
-                relative inline-flex items-center gap-3 px-4 py-3 rounded-lg border transition-all w-full
-                ${
-                  field.state.value === 'public'
-                    ? 'bg-green-500/10 border-green-500/40 text-green-400'
-                    : 'bg-white/5 border-white/20 text-white/60'
-                }
-              `}
-            >
-              <span className="text-lg">
-                {field.state.value === 'public' ? '🌐' : '🔒'}
-              </span>
-              <span className="flex-1 text-left">
-                <span className="block text-sm font-semibold">
-                  {field.state.value === 'public' ? 'Public' : 'Private'}
+        {(field) => {
+          const isPublic = field.state.value === 'public'
+          return (
+            <div className="space-y-1.5">
+              <span className="field-label">Visibility</span>
+              <label className="flex cursor-pointer items-center justify-between gap-3 rounded-xl border border-[var(--line)] bg-[var(--surface)] px-4 py-3 transition-colors hover:border-[var(--lagoon)]">
+                <span className="flex items-center gap-3">
+                  <span className="text-lg">{isPublic ? '🌐' : '🔒'}</span>
+                  <span>
+                    <span className="block text-sm font-semibold text-[var(--sea-ink)]">
+                      {isPublic ? 'Public' : 'Private'}
+                    </span>
+                    <span className="block text-xs text-[var(--sea-ink-soft)]">
+                      {isPublic
+                        ? 'Visible to everyone in the library'
+                        : 'Only visible to you'}
+                    </span>
+                  </span>
                 </span>
-                <span className="block text-xs opacity-60">
-                  {field.state.value === 'public'
-                    ? 'Visible to everyone in the library'
-                    : 'Only visible to you'}
-                </span>
-              </span>
-              {/* Toggle pill */}
-              <input
-                type="checkbox"
-                checked={field.state.value === 'public'}
-                onChange={(e) => {
-                  field.handleChange(e.target.checked ? 'public' : 'private')
-                }}
-                className="toggle border-white bg-white/20 checked:border-green-800 checked:bg-green-500 text-white"
-              />
-            </button>
-            {/* {field.state.value === 'public' && !isAdmin && (
-              <p className="text-xs text-amber-400/80 flex items-center gap-1.5">
-                ⚠️ Once public, only an admin can edit or make it private again.
-              </p>
-            )} */}
-          </div>
-        )}
+                <input
+                  type="checkbox"
+                  checked={isPublic}
+                  onChange={(e) =>
+                    field.handleChange(e.target.checked ? 'public' : 'private')
+                  }
+                  className="toggle toggle-primary"
+                  aria-label="Toggle public visibility"
+                />
+              </label>
+            </div>
+          )
+        }}
       </form.Field>
 
       {/* Description */}
       <form.Field name="description">
         {(field) => (
-          <div className="space-y-1">
-            <label className="text-xs uppercase tracking-wider text-white/50 font-medium">
+          <div className="space-y-1.5">
+            <label htmlFor={field.name} className="field-label">
               Description
             </label>
             <textarea
+              id={field.name}
               value={field.state.value}
               onBlur={field.handleBlur}
               onChange={(e) => field.handleChange(e.target.value)}
-              className="w-full bg-white/5 border border-white/20 rounded-lg p-3 text-white h-36 resize-y focus:outline-none focus:border-white/40 transition-colors"
+              className="field-input h-36 resize-y"
               placeholder="Enter book description…"
             />
           </div>
         )}
       </form.Field>
 
-      {/* Errors / Actions */}
+      {/* Actions — field-level messages above already surface validation errors */}
       <form.Subscribe
         selector={(s) => ({
           canSubmit: s.canSubmit,
           isSubmitting: s.isSubmitting,
-          errors: s.errors,
         })}
       >
-        {({ canSubmit, isSubmitting, errors }) => (
-          <>
-            {errors.length > 0 && (
-              <div className="p-3 bg-red-500/10 border border-red-500/20 rounded-lg text-red-400 text-sm">
-                ⚠️ {errors.join(', ')}
-              </div>
-            )}
-            <div className="flex gap-3">
-              <button
-                type="submit"
-                disabled={!canSubmit}
-                className="flex-1 py-3 bg-green-600 hover:bg-green-500 disabled:bg-green-800 disabled:cursor-not-allowed text-white rounded-lg font-bold transition-colors flex items-center justify-center gap-2"
-              >
-                {isSubmitting ? (
-                  <>
-                    <span className="animate-spin inline-block">⏳</span>{' '}
-                    Saving…
-                  </>
-                ) : (
-                  '💾 Save Changes'
-                )}
-              </button>
-              <button
-                type="button"
-                onClick={onClose}
-                disabled={isSubmitting}
-                className="px-6 py-3 bg-white/10 hover:bg-white/20 disabled:opacity-50 text-white rounded-lg font-medium transition-colors"
-              >
-                Cancel
-              </button>
-            </div>
-          </>
+        {({ canSubmit, isSubmitting }) => (
+          <div className="flex gap-3 pt-1">
+            <button
+              type="submit"
+              disabled={!canSubmit}
+              className="btn btn-primary flex-1"
+            >
+              {isSubmitting ? (
+                <>
+                  <span className="loading loading-spinner loading-sm" />
+                  Saving…
+                </>
+              ) : (
+                '💾 Save Changes'
+              )}
+            </button>
+            <button
+              type="button"
+              onClick={onClose}
+              disabled={isSubmitting}
+              className="btn btn-ghost"
+            >
+              Cancel
+            </button>
+          </div>
         )}
       </form.Subscribe>
     </form>
