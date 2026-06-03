@@ -46,12 +46,19 @@ export interface AudiobookUploader {
   image: string | null
 }
 
+export interface UserProfile {
+  id: string
+  name: string
+  image: string | null
+}
+
 async function searchAudiobooks(
   query: string,
   limit = 50,
   offset = 0,
   sort: SortKey = 'recent',
   completeOnly = false,
+  userId?: string,
 ): Promise<SearchResponse> {
   const params = new URLSearchParams({
     q: query,
@@ -60,6 +67,7 @@ async function searchAudiobooks(
     sort,
     completeOnly: String(completeOnly),
   })
+  if (userId) params.set('userId', userId)
   const res = await fetch(`${API_URL}/audiobook/search?${params}`, {
     credentials: 'include',
   })
@@ -83,10 +91,11 @@ export const searchQuery = (
   limit = 50,
   offset = 0,
   sort: SortKey = 'recent',
+  userId?: string,
 ) =>
   queryOptions({
-    queryKey: ['audiobook-search', query, limit, offset, sort],
-    queryFn: () => searchAudiobooks(query, limit, offset, sort),
+    queryKey: ['audiobook-search', query, limit, offset, sort, userId ?? null],
+    queryFn: () => searchAudiobooks(query, limit, offset, sort, false, userId),
     staleTime: 1000 * 30, // 30s — search results can change
     placeholderData: (prev) => prev, // keep previous page visible while fetching
   })
@@ -121,4 +130,24 @@ export const audiobookUploaderQuery = (bookId: string) =>
     queryKey: ['audiobook-uploader', bookId],
     queryFn: () => fetchAudiobookUploader(bookId),
     staleTime: 1000 * 60 * 15, // 15m — uploader doesn't change
+  })
+
+async function fetchUserProfile(
+  userId: string,
+): Promise<{ user: UserProfile }> {
+  const res = await fetch(`${API_URL}/audiobook/user/${userId}`, {
+    credentials: 'include',
+  })
+  if (!res.ok) {
+    if (res.status === 404) throw new Error('User not found')
+    throw new Error('Failed to load user')
+  }
+  return res.json()
+}
+
+export const userProfileQuery = (userId: string) =>
+  queryOptions({
+    queryKey: ['user-profile', userId],
+    queryFn: () => fetchUserProfile(userId),
+    staleTime: 1000 * 60 * 15, // 15m — profile rarely changes
   })

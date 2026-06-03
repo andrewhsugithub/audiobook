@@ -243,7 +243,12 @@ function BookComponent() {
 
               {/* ── Uploaded by ─────────────────────────────────────────── */}
               {uploader?.name && (
-                <div className="mt-3 flex items-center gap-2 text-sm text-[var(--sea-ink-soft)]">
+                <Link
+                  to="/users/$userId"
+                  params={{ userId: uploader.id }}
+                  search={{ name: uploader.name }}
+                  className="group mt-3 inline-flex w-fit items-center gap-2 text-sm text-[var(--sea-ink-soft)] transition-colors hover:text-[var(--sea-ink)]"
+                >
                   {uploader.image ? (
                     <img
                       src={uploader.image}
@@ -260,11 +265,11 @@ function BookComponent() {
                   )}
                   <span>
                     Uploaded by{' '}
-                    <span className="font-semibold text-[var(--sea-ink)]">
+                    <span className="font-semibold text-[var(--sea-ink)] group-hover:underline">
                       {uploader.name}
                     </span>
                   </span>
-                </div>
+                </Link>
               )}
 
               <div className="mt-4 flex items-center gap-2 text-sm font-semibold tracking-wide">

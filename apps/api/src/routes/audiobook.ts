@@ -59,6 +59,8 @@ const searchSchema = z.object({
     .string()
     .transform((v) => v === "true")
     .default(false),
+  // Restrict results to a single uploader (used by the user's uploads page).
+  userId: z.string().optional(),
 });
 
 // METADATA ENDPOINT WITH ETAG SWR VALIDATION
@@ -258,6 +260,25 @@ app.get("/:id/uploader", async (c) => {
     200,
     { "Cache-Control": "no-cache, must-revalidate" },
   );
+});
+
+// Public profile of an uploader, used by the "books by this user" page.
+// Registered before the catch-all "/:id/:filename" route (the static "user"
+// segment wins over the "/:id" param, but order keeps intent clear).
+app.get("/user/:userId", async (c) => {
+  const profileUserId = c.req.param("userId");
+  const db = getDb(c.env.HYPERDRIVE.connectionString);
+
+  const [row] = await db
+    .select({ id: user.id, name: user.name, image: user.image })
+    .from(user)
+    .where(eq(user.id, profileUserId));
+
+  if (!row) return c.json({ error: "User not found" }, 404);
+
+  return c.json({ user: row }, 200, {
+    "Cache-Control": "no-cache, must-revalidate",
+  });
 });
 
 app.post("/:id/session", async (c) => {
@@ -502,7 +523,8 @@ app.get("/:id/:filename{.+}", async (c) => {
 });
 
 app.get("/search", zValidator("query", searchSchema), async (c) => {
-  const { q: query, limit, offset, sort, completeOnly } = c.req.valid("query");
+  const { q: query, limit, offset, sort, completeOnly, userId } =
+    c.req.valid("query");
   const db = getDb(c.env.HYPERDRIVE.connectionString);
 
   // Try to get the current user from the session cookie (optional auth)
@@ -540,9 +562,11 @@ app.get("/search", zValidator("query", searchSchema), async (c) => {
         )
       : eq(audiobooks.visibility, "public");
 
-  const baseCondition = completeOnly
-    ? and(eq(audiobooks.status, "completed"), visibilityFilter)
-    : visibilityFilter;
+  const baseCondition = and(
+    completeOnly ? eq(audiobooks.status, "completed") : undefined,
+    visibilityFilter,
+    userId ? eq(audiobooks.userId, userId) : undefined,
+  );
 
   const searchCondition =
     query.length > 0
