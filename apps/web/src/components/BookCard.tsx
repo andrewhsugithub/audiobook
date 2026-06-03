@@ -28,7 +28,7 @@ function BookCard({ bookId, libraryTitle, variant = 'library' }: Props) {
   }
 
   return (
-    <li
+    <div
       key={bookId}
       className={`group [perspective:900px] ${isCarousel ? 'w-[160px] shrink-0' : 'w-full'}`}
     >
@@ -85,7 +85,7 @@ function BookCard({ bookId, libraryTitle, variant = 'library' }: Props) {
           book?.author || 'Anonymous Author'
         )}
       </small>
-    </li>
+    </div>
   )
 }
 
