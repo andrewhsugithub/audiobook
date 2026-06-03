@@ -40,6 +40,12 @@ export interface AudiobookInfo {
   errorMessage: string | null
 }
 
+export interface AudiobookUploader {
+  id: string
+  name: string
+  image: string | null
+}
+
 async function searchAudiobooks(
   query: string,
   limit = 50,
@@ -95,4 +101,24 @@ export const audiobookInfoQuery = (bookId: string) =>
       if (status !== 'processing') return false
       return 5000
     },
+  })
+
+async function fetchAudiobookUploader(
+  bookId: string,
+): Promise<{ uploader: AudiobookUploader | null }> {
+  const res = await fetch(`${API_URL}/audiobook/${bookId}/uploader`, {
+    credentials: 'include',
+  })
+  if (!res.ok) {
+    if (res.status === 404) throw new Error('Audiobook not found')
+    throw new Error('Failed to load uploader')
+  }
+  return res.json()
+}
+
+export const audiobookUploaderQuery = (bookId: string) =>
+  queryOptions({
+    queryKey: ['audiobook-uploader', bookId],
+    queryFn: () => fetchAudiobookUploader(bookId),
+    staleTime: 1000 * 60 * 15, // 15m — uploader doesn't change
   })

@@ -5,7 +5,7 @@ import { getCookie, setCookie, deleteCookie } from "hono/cookie";
 import { sign, verify } from "hono/jwt";
 import { eq, ilike, or, desc, and, asc, sql } from "@audiobook/db/src/index";
 import { getDb } from "@audiobook/db/src";
-import { assets, audiobooks } from "@audiobook/db/src/schema/schema";
+import { assets, audiobooks, user } from "@audiobook/db/src/schema/schema";
 import { storage } from "@audiobook/storage/src/storage.cf";
 import type { Env } from "../types/env";
 import { authMiddleware } from "../middleware/auth";
@@ -194,6 +194,69 @@ app.get("/:id/status", async (c) => {
     },
     200,
     { "Cache-Control": "no-store" },
+  );
+});
+
+// Returns the user who uploaded (owns) the book, if any.
+// Registered before the catch-all "/:id/:filename" route so it isn't
+// swallowed by the HLS file handler.
+app.get("/:id/uploader", async (c) => {
+  const audiobookId = c.req.param("id");
+  const db = getDb(c.env.HYPERDRIVE.connectionString);
+
+  let currentUserId: string | null = null;
+  let isAdmin = false;
+
+  try {
+    const { createAuth } = await import("../lib/auth");
+
+    const auth = createAuth(c.env);
+
+    const session = await auth.api.getSession({ headers: c.req.raw.headers });
+    if (session?.user) {
+      currentUserId = session.user.id;
+      isAdmin = session.user.role === "admin";
+    }
+  } catch {
+    // Unauthenticated => guest
+  }
+
+  const [row] = await db
+    .select({
+      visibility: audiobooks.visibility,
+      ownerId: audiobooks.userId,
+      uploaderId: user.id,
+      uploaderName: user.name,
+      uploaderImage: user.image,
+    })
+    .from(audiobooks)
+    .leftJoin(user, eq(audiobooks.userId, user.id))
+    .where(eq(audiobooks.id, audiobookId));
+
+  if (!row) return c.json({ error: "Audiobook not found" }, 404);
+
+  // Mirror the /info privacy rule — don't leak private books (or their
+  // uploader) to anyone but the owner or an admin.
+  if (
+    row.visibility === "private" &&
+    row.ownerId !== currentUserId &&
+    !isAdmin
+  ) {
+    return c.json({ error: "Audiobook not found" }, 404);
+  }
+
+  return c.json(
+    {
+      uploader: row.uploaderId
+        ? {
+            id: row.uploaderId,
+            name: row.uploaderName,
+            image: row.uploaderImage,
+          }
+        : null,
+    },
+    200,
+    { "Cache-Control": "no-cache, must-revalidate" },
   );
 });
 

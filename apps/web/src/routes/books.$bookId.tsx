@@ -5,7 +5,7 @@ import Header from '../components/Header'
 import Rating from '../components/Rating'
 import { HlsAudioPlayer } from '../components/HlsAudio'
 import { useHlsStream } from '../hooks/useHlsStream'
-import { useAudiobookInfo } from '../hooks/useAudiobookInfo'
+import { useAudiobookInfo, useAudiobookUploader } from '../hooks/useAudiobookInfo'
 import { UploadForm } from '../components/forms/UploadForm'
 import { EditBookForm } from '../components/forms/EditBookForm'
 import { useAuth } from '../hooks/useAuth'
@@ -48,6 +48,9 @@ function BookComponent() {
     isError: isInfoError,
     error: infoError,
   } = useAudiobookInfo(bookId)
+
+  const { data: uploaderData } = useAudiobookUploader(bookId)
+  const uploader = uploaderData?.uploader
 
   const {
     isLoading: isStreamLoading,
@@ -237,6 +240,32 @@ function BookComponent() {
                   book?.author || 'Anonymous Author'
                 )}
               </small>
+
+              {/* ── Uploaded by ─────────────────────────────────────────── */}
+              {uploader?.name && (
+                <div className="mt-3 flex items-center gap-2 text-sm text-[var(--sea-ink-soft)]">
+                  {uploader.image ? (
+                    <img
+                      src={uploader.image}
+                      alt={uploader.name}
+                      className="h-5 w-5 rounded-full object-cover"
+                    />
+                  ) : (
+                    <span
+                      aria-hidden
+                      className="grid h-5 w-5 place-content-center rounded-full bg-[var(--chip-bg)] text-[10px] font-semibold uppercase"
+                    >
+                      {uploader.name.charAt(0)}
+                    </span>
+                  )}
+                  <span>
+                    Uploaded by{' '}
+                    <span className="font-semibold text-[var(--sea-ink)]">
+                      {uploader.name}
+                    </span>
+                  </span>
+                </div>
+              )}
 
               <div className="mt-4 flex items-center gap-2 text-sm font-semibold tracking-wide">
                 {isInfoLoading ? (
