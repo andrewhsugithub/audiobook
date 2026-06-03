@@ -23,7 +23,7 @@ function PlayerFallback() {
 export function HlsAudioPlayer({ src, title }: HlsAudioPlayerProps) {
   if (!src) {
     return (
-      <div className="rounded-lg border border-white/10 bg-white/5 p-3 text-sm opacity-60">
+      <div className="rounded-lg border border-[var(--line)] bg-[var(--surface)] p-3 text-sm opacity-60">
         No audio stream available yet.
       </div>
     )
@@ -36,6 +36,7 @@ export function HlsAudioPlayer({ src, title }: HlsAudioPlayerProps) {
           <AudioSkin>
             <HlsVideo
               src={src}
+              title={title}
               playsInline
               type="application/x-mpegURL"
               crossOrigin="use-credentials"

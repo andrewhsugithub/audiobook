@@ -28,12 +28,12 @@ function UploadPage() {
       <div className="min-w-[360px]">
         <Header title="Upload" backTo="/my-books" />
         <main className="p-6 text-center">
-          <p className="text-white/60 mb-4">
+          <p className="mb-4 text-[var(--sea-ink-soft)]">
             You must be signed in to upload audiobooks.
           </p>
           <button
             onClick={() => navigate({ to: '/sign-in' })}
-            className="island-shell rounded-full px-6 py-3"
+            className="btn btn-primary"
           >
             Sign In
           </button>
@@ -50,7 +50,7 @@ function UploadPage() {
           <h1 className="display-title text-3xl font-bold mb-2">
             New Audiobook
           </h1>
-          <p className="text-white/50 text-sm">
+          <p className="text-sm text-[var(--sea-ink-soft)]">
             Upload a PDF or TXT file, or paste text directly. Your book will be
             private by default — you can make it public after reviewing it.
           </p>

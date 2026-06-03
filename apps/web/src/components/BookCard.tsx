@@ -66,7 +66,7 @@ function BookCard({ bookId, libraryTitle, variant = 'library' }: Props) {
       </Link>
       <h3 className="pt-4 text-[clamp(1rem,2.5vw,1.1rem)]/[1.2] font-bold overflow-hidden text-ellipsis">
         {isInfoLoading ? (
-          <span className="animate-pulse bg-white/10 rounded h-6 w-3/4 block"></span>
+          <span className="animate-pulse bg-[var(--line)] rounded h-6 w-3/4 block"></span>
         ) : (
           <Link
             to="/books/$bookId"
@@ -80,7 +80,7 @@ function BookCard({ bookId, libraryTitle, variant = 'library' }: Props) {
       </h3>
       <small className="block pt-2 uppercase opacity-70 text-xs">
         {isInfoLoading ? (
-          <span className="animate-pulse bg-white/5 rounded h-4 w-1/2 block" />
+          <span className="animate-pulse bg-[var(--line)] rounded h-4 w-1/2 block" />
         ) : (
           book?.author || 'Anonymous Author'
         )}
