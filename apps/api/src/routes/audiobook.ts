@@ -5,7 +5,7 @@ import { getCookie, setCookie, deleteCookie } from "hono/cookie";
 import { sign, verify } from "hono/jwt";
 import { eq, ilike, or, desc, and, asc, sql } from "@audiobook/db/src/index";
 import { getDb } from "@audiobook/db/src";
-import { assets, audiobooks } from "@audiobook/db/src/schema/schema";
+import { assets, audiobooks, user } from "@audiobook/db/src/schema/schema";
 import { storage } from "@audiobook/storage/src/storage.cf";
 import type { Env } from "../types/env";
 import { authMiddleware } from "../middleware/auth";
@@ -59,6 +59,8 @@ const searchSchema = z.object({
     .string()
     .transform((v) => v === "true")
     .default(false),
+  // Restrict results to a single uploader (used by the user's uploads page).
+  userId: z.string().optional(),
 });
 
 // METADATA ENDPOINT WITH ETAG SWR VALIDATION
@@ -195,6 +197,88 @@ app.get("/:id/status", async (c) => {
     200,
     { "Cache-Control": "no-store" },
   );
+});
+
+// Returns the user who uploaded (owns) the book, if any.
+// Registered before the catch-all "/:id/:filename" route so it isn't
+// swallowed by the HLS file handler.
+app.get("/:id/uploader", async (c) => {
+  const audiobookId = c.req.param("id");
+  const db = getDb(c.env.HYPERDRIVE.connectionString);
+
+  let currentUserId: string | null = null;
+  let isAdmin = false;
+
+  try {
+    const { createAuth } = await import("../lib/auth");
+
+    const auth = createAuth(c.env);
+
+    const session = await auth.api.getSession({ headers: c.req.raw.headers });
+    if (session?.user) {
+      currentUserId = session.user.id;
+      isAdmin = session.user.role === "admin";
+    }
+  } catch {
+    // Unauthenticated => guest
+  }
+
+  const [row] = await db
+    .select({
+      visibility: audiobooks.visibility,
+      ownerId: audiobooks.userId,
+      uploaderId: user.id,
+      uploaderName: user.name,
+      uploaderImage: user.image,
+    })
+    .from(audiobooks)
+    .leftJoin(user, eq(audiobooks.userId, user.id))
+    .where(eq(audiobooks.id, audiobookId));
+
+  if (!row) return c.json({ error: "Audiobook not found" }, 404);
+
+  // Mirror the /info privacy rule — don't leak private books (or their
+  // uploader) to anyone but the owner or an admin.
+  if (
+    row.visibility === "private" &&
+    row.ownerId !== currentUserId &&
+    !isAdmin
+  ) {
+    return c.json({ error: "Audiobook not found" }, 404);
+  }
+
+  return c.json(
+    {
+      uploader: row.uploaderId
+        ? {
+            id: row.uploaderId,
+            name: row.uploaderName,
+            image: row.uploaderImage,
+          }
+        : null,
+    },
+    200,
+    { "Cache-Control": "no-cache, must-revalidate" },
+  );
+});
+
+// Public profile of an uploader, used by the "books by this user" page.
+// Registered before the catch-all "/:id/:filename" route (the static "user"
+// segment wins over the "/:id" param, but order keeps intent clear).
+app.get("/user/:userId", async (c) => {
+  const profileUserId = c.req.param("userId");
+  const db = getDb(c.env.HYPERDRIVE.connectionString);
+
+  const [row] = await db
+    .select({ id: user.id, name: user.name, image: user.image })
+    .from(user)
+    .where(eq(user.id, profileUserId));
+
+  if (!row) return c.json({ error: "User not found" }, 404);
+
+  return c.json({ user: row }, 200, {
+    "Cache-Control": "no-cache, must-revalidate",
+  });
 });
 
 app.post("/:id/session", async (c) => {
@@ -439,7 +523,8 @@ app.get("/:id/:filename{.+}", async (c) => {
 });
 
 app.get("/search", zValidator("query", searchSchema), async (c) => {
-  const { q: query, limit, offset, sort, completeOnly } = c.req.valid("query");
+  const { q: query, limit, offset, sort, completeOnly, userId } =
+    c.req.valid("query");
   const db = getDb(c.env.HYPERDRIVE.connectionString);
 
   // Try to get the current user from the session cookie (optional auth)
@@ -477,9 +562,11 @@ app.get("/search", zValidator("query", searchSchema), async (c) => {
         )
       : eq(audiobooks.visibility, "public");
 
-  const baseCondition = completeOnly
-    ? and(eq(audiobooks.status, "completed"), visibilityFilter)
-    : visibilityFilter;
+  const baseCondition = and(
+    completeOnly ? eq(audiobooks.status, "completed") : undefined,
+    visibilityFilter,
+    userId ? eq(audiobooks.userId, userId) : undefined,
+  );
 
   const searchCondition =
     query.length > 0
