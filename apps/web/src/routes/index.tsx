@@ -60,37 +60,44 @@ function App() {
           <h1 className="display-title text-6xl font-bold">Audiobook</h1>
         </div>
 
-        <div className="flex flex-nowrap items-center gap-3">
-          {!isPending && isLoggedIn && (
-            <span className="mr-1 min-w-0 max-w-[10rem] truncate text-sm font-medium opacity-70">
-              {user?.name || user?.email}
-            </span>
-          )}
+        <div className="flex flex-col items-end gap-3">
+          {/* Row 1 — identity, auth, theme */}
+          <div className="flex flex-nowrap items-center gap-3">
+            {!isPending && isLoggedIn && (
+              <span className="min-w-0 max-w-[10rem] truncate text-sm font-medium opacity-70">
+                {user?.name || user?.email}
+              </span>
+            )}
 
-          <ThemeToggle />
-
-          {!isPending &&
-            (isLoggedIn ? (
-              <div className="flex items-center gap-3">
-                <Link to="/upload" className="btn btn-sm btn-primary">
-                  + Upload
-                </Link>
+            {!isPending &&
+              (isLoggedIn ? (
                 <button
                   onClick={handleSignOut}
                   className="btn btn-sm btn-ghost"
                 >
                   Sign Out
                 </button>
-              </div>
-            ) : (
-              <Link className="btn btn-sm btn-primary" to="/sign-in">
-                Sign In
-              </Link>
-            ))}
+              ) : (
+                <Link className="btn btn-sm btn-primary" to="/sign-in">
+                  Sign In
+                </Link>
+              ))}
 
-          <Link className="btn btn-sm btn-soft" to="/library">
-            Browse
-          </Link>
+            <ThemeToggle />
+          </div>
+
+          {/* Row 2 — navigation, upload */}
+          <div className="flex flex-nowrap items-center gap-3">
+            <Link className="btn btn-sm btn-soft" to="/library">
+              Browse
+            </Link>
+
+            {!isPending && isLoggedIn && (
+              <Link to="/upload" className="btn btn-sm btn-primary">
+                + Upload
+              </Link>
+            )}
+          </div>
         </div>
       </div>
 
