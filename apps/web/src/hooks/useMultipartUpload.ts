@@ -116,6 +116,7 @@ export function useMultipartUpload() {
         const initiateRes = await fetch(targetUrl, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
           signal,
           body: JSON.stringify({
             fileName: file.name,
@@ -149,6 +150,7 @@ export function useMultipartUpload() {
         const urlsRes = await fetch(`${API_URL}/upload/get-presigned-urls`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
           signal,
           body: JSON.stringify({ fileKey, uploadId, totalParts, bookId }),
         })
@@ -206,6 +208,7 @@ export function useMultipartUpload() {
         const completeRes = await fetch(`${API_URL}/upload/complete`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
           signal,
           body: JSON.stringify({
             uploadId,
@@ -269,6 +272,7 @@ export function useMultipartUpload() {
       const res = await fetch(targetUrl, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
         signal: controller.signal,
         body: JSON.stringify({ text, ...metadata }),
       })
@@ -315,6 +319,7 @@ async function abortUpload(info: {
 }) {
   await fetch(`${API_URL}/upload/abort`, {
     method: 'POST',
+    credentials: 'include',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(info),
   })

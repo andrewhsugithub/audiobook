@@ -11,6 +11,7 @@ import { TanStackDevtools } from '@tanstack/react-devtools'
 import '../styles.css'
 import type { QueryClient } from '@tanstack/react-query'
 import { ToastProvider } from '../components/Toast'
+import { ReactQueryDevtools } from '@tanstack/react-query-devtools'
 
 export const Route = createRootRouteWithContext<{
   queryClient: QueryClient
@@ -84,6 +85,10 @@ function RootComponent() {
           {
             name: 'TanStack Router',
             render: <TanStackRouterDevtoolsPanel />,
+          },
+          {
+            name: 'React Query',
+            render: <ReactQueryDevtools initialIsOpen={false} />,
           },
         ]}
       />

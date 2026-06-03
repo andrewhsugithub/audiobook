@@ -9,8 +9,9 @@ import {
   index,
   real,
 } from "drizzle-orm/pg-core";
-import { users } from "./users.js";
-import { sql } from "drizzle-orm";
+import { user } from "./auth.js";
+import { relations, sql } from "drizzle-orm";
+import { userLibrary } from "./schema.js";
 
 export const audiobookVisibilityEnum = pgEnum("audiobook_visibility", [
   "public",
@@ -41,9 +42,9 @@ export const audiobooks = pgTable(
   "audiobooks",
   {
     id: uuid("id").defaultRandom().primaryKey(),
-    userId: uuid("user_id")
+    userId: text("user_id")
       .notNull()
-      .references(() => users.id, { onDelete: "cascade" }),
+      .references(() => user.id, { onDelete: "cascade" }),
 
     // book metadata
     title: varchar("title", { length: 100 }).notNull(),
@@ -95,3 +96,13 @@ export const audiobooks = pgTable(
     index("audiobooks_status_idx").on(table.status),
   ],
 ).enableRLS();
+
+export const audiobooksRelations = relations(audiobooks, ({ one, many }) => ({
+  // The creator/owner of the audiobook
+  owner: one(user, {
+    fields: [audiobooks.userId],
+    references: [user.id],
+  }),
+  // Users who have saved this book to their library
+  inLibraries: many(userLibrary),
+}));

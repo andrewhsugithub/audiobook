@@ -1,4 +1,4 @@
-import { Link } from '@tanstack/react-router'
+import { Link, useRouter } from '@tanstack/react-router'
 import ThemeToggle from './ThemeToggle'
 
 import { FaArrowLeft } from 'react-icons/fa'
@@ -11,17 +11,18 @@ type Props = {
 }
 
 export default function Header({ title, right, backTo, backSearch }: Props) {
+  const router = useRouter()
+
   return (
     <header className="sticky top-0 z-999 flex h-16 items-center justify-between border-b-5 border-solid border-[rgba(245,240,214,0.12)] bg-(--brand-charcoal) px-10 backdrop-blur-xl">
       {/* Back */}
-      <Link
-        to={backTo || '/'}
-        search={backSearch || '/'}
+      <button
+        onClick={() => router.history.back()}
         aria-label="Go back"
         className="relative z-10 flex items-center gap-2 text-xl opacity-70 transition-all duration-300 hover:opacity-100"
       >
         <FaArrowLeft aria-hidden="true" />
-      </Link>
+      </button>
 
       {/* Current Library */}
       <div className="pointer-events-none absolute left-1/2 -translate-x-1/2">

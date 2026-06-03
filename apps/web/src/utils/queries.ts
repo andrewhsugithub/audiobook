@@ -26,6 +26,8 @@ export interface AudiobookInfo {
   author: string
   description: string
   ratings: number | null
+  visibility: 'public' | 'private'
+  isOwner: boolean
   coverUrl: string
   isReady: boolean
   errorMessage: string | null
@@ -43,13 +45,17 @@ async function searchAudiobooks(
     offset: String(offset),
     completeOnly: String(completeOnly),
   })
-  const res = await fetch(`${API_URL}/audiobook/search?${params}`)
+  const res = await fetch(`${API_URL}/audiobook/search?${params}`, {
+    credentials: 'include',
+  })
   if (!res.ok) throw new Error(`Search failed: ${res.status}`)
   return res.json()
 }
 
 async function fetchAudiobookInfo(bookId: string): Promise<AudiobookInfo> {
-  const res = await fetch(`${API_URL}/audiobook/${bookId}/info`)
+  const res = await fetch(`${API_URL}/audiobook/${bookId}/info`, {
+    credentials: 'include',
+  })
   if (!res.ok) {
     if (res.status === 404) throw new Error('Audiobook not found')
     throw new Error('Failed to load audiobook')
@@ -69,10 +75,10 @@ export const audiobookInfoQuery = (bookId: string) =>
   queryOptions({
     queryKey: ['audiobook-info', bookId],
     queryFn: () => fetchAudiobookInfo(bookId),
-    staleTime: 1000 * 60 * 15,
+    staleTime: 1000 * 60 * 15, // 15m — audiobook details don't change often
     refetchInterval: (query) => {
       const status = query.state.data?.status
-      if (!status || status === 'completed' || status === 'failed') return false
+      if (status !== 'processing') return false
       return 5000
     },
   })

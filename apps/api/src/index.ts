@@ -8,33 +8,21 @@ import { queue } from "./queue";
 import { openAPIRouteHandler } from "hono-openapi";
 import { swaggerUI } from "@hono/swagger-ui";
 import upload from "./routes/upload";
-import { cors } from "hono/cors";
 import audiobook from "./routes/audiobook";
 import cover from "./routes/cover";
-
-type Env = {
-  Bindings: Cloudflare.Env;
-};
+import { corsMiddleware } from "./middleware/cors";
+import { mountAuthRoutes } from "./middleware/auth";
+import { globalErrorHandler, notFoundHandler } from "./middleware/error";
+import type { Env } from "./types/env";
+import library from "./routes/library";
 
 const app = new Hono<Env>();
 
-const ALLOWED_ORIGINS = ["http://localhost:5173", "http://localhost:3000"];
+app.use("*", corsMiddleware);
 
-app.use(
-  "/*",
-  cors({
-    origin: (origin) => (ALLOWED_ORIGINS.includes(origin) ? origin : null),
-    allowMethods: ["GET", "OPTIONS", "POST", "PATCH"],
-    allowHeaders: ["Range", "Content-Type", "If-None-Match"],
-    exposeHeaders: [
-      "Content-Length",
-      "Content-Range",
-      "Accept-Ranges",
-      "X-Cache-Status",
-    ],
-    credentials: true,
-    maxAge: 86400, // Cache preflight flags for 24h
-  }),
+// ── Better Auth — handles /api/auth/* (sign-in, sign-up, session, etc.) ───────
+app.on(["GET", "POST"], "/api/auth/*", (c) =>
+  mountAuthRoutes(c.env)(c.req.raw),
 );
 
 app.get("/", (c) => {
@@ -51,6 +39,10 @@ app.get(
 app.route("/audiobook", audiobook);
 app.route("/upload", upload);
 app.route("/cover", cover);
+app.route("/library", library);
+
+app.onError(globalErrorHandler);
+app.notFound(notFoundHandler);
 
 app.get(
   "/openapi.json",

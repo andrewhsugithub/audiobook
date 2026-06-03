@@ -4,7 +4,7 @@
 import { faker } from "@faker-js/faker";
 import { seed } from "drizzle-seed";
 import { getDb, sql } from "../index.js";
-import { users, audiobooks } from "../schema/schema.js";
+import { user, audiobooks } from "../schema/schema.js";
 import { DATABASE_URL } from "@audiobook/shared-libs/config/env.js";
 import * as schema from "../schema/schema.js";
 import { randomInt } from "node:crypto";
@@ -14,7 +14,7 @@ export async function audiobookSeed() {
 
   const db = getDb(DATABASE_URL);
 
-  const liveUsers = await db.select({ id: users.id }).from(users);
+  const liveUsers = await db.select({ id: user.id }).from(user);
 
   console.log(
     "📚 Seeding metadata-only audiobooks mapped to active user IDs...",

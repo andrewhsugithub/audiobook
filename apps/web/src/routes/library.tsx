@@ -6,7 +6,6 @@ import Header from '../components/Header'
 import SearchBar from '../components/SearchBar'
 import { searchQuery } from '../utils/queries'
 import { useSearch } from '../hooks/useSearch'
-import { getMyBooks } from '../utils/myBooks'
 
 export const Route = createFileRoute('/library')({
   head: () => ({ meta: [{ title: 'Library · Audiobook' }] }),
@@ -22,52 +21,25 @@ const GAP = 24
 const PAGE_SIZE = 50
 
 function Library() {
-  const { title } = Route.useSearch() as { title?: string }
   const [searchInput, setSearchInput] = useState('')
   const [limit, setLimit] = useState(PAGE_SIZE)
-
-  const isMyBooks = title === 'My Books'
-
-  const myBooks = isMyBooks ? getMyBooks() : []
 
   // Reset paging whenever the query changes so each new search starts fresh.
   useEffect(() => {
     setLimit(PAGE_SIZE)
   }, [searchInput])
 
-  const {
-    data: searchData,
-    isLoading,
-    isStale,
-  } = useSearch(isMyBooks ? '' : searchInput, limit)
+  const { data: searchData, isLoading, isStale } = useSearch(searchInput, limit)
 
   const apiBooks = searchData?.results ?? []
   const total = searchData?.total ?? 0
 
-  const displayBooks = isMyBooks
-    ? myBooks.map((b) => ({
-        id: b.id,
-        title: b.title,
-        author: b.author,
-        description: b.description,
-        ratings: b.ratings,
-        coverUrl: b.coverUrl,
-        status: 'completed' as const,
-      }))
-    : apiBooks
+  const displayBooks = apiBooks
 
-  const filteredBooks = isMyBooks
-    ? displayBooks.filter((b) => {
-        const q = searchInput.toLowerCase()
-        return (
-          b.title.toLowerCase().includes(q) ||
-          b.author.toLowerCase().includes(q)
-        )
-      })
-    : displayBooks
+  const filteredBooks = displayBooks
 
   // More server results available than we've loaded (search view only).
-  const canLoadMore = !isMyBooks && apiBooks.length < total
+  const canLoadMore = apiBooks.length < total
   const isEmpty = !isLoading && filteredBooks.length === 0
 
   const gridRef = useRef<HTMLUListElement>(null)
@@ -97,7 +69,7 @@ function Library() {
   return (
     <div className="min-w-[360px]">
       <Header
-        title={title || 'Library'}
+        title={'Library'}
         right={
           <div className="flex items-center gap-3">
             <SearchBar value={searchInput} onChange={setSearchInput} />
@@ -117,11 +89,6 @@ function Library() {
           (searchInput ? (
             <p className="text-sm opacity-50 mb-4">
               No results for &ldquo;{searchInput}&rdquo;
-            </p>
-          ) : isMyBooks ? (
-            <p className="text-sm opacity-50 mb-4">
-              Your library is empty. Add books from the catalog to see them
-              here.
             </p>
           ) : (
             <p className="text-sm opacity-50 mb-4">
@@ -143,7 +110,7 @@ function Library() {
               <BookCard
                 key={book.id}
                 bookId={book.id}
-                libraryTitle={title || 'Library'}
+                libraryTitle={'Library'}
               />
             ))}
 
