@@ -228,16 +228,8 @@ the first generated WAV) or fetch
 
 ## TODO
 
-- [ ] fix/update upload in frontend to integrate with backend's upload api
-- [ ] provide a `completed` tag in frontend
-- [ ] fix home page to show recently updated and completed audiobooks instead of fixed ones
-- [ ] can untoggle `+ My Library`
-- [ ] add filter/query buttons in search page
-- [ ] refactor all forms with tanstack-form
-- [ ] add edit cover image endpoint
-
+- [ ] add audiobook versioning for cache busting, currently deletes old segments when reupload and apply versioning on `hls` only, can't apply versioning specifically on segments since each segment is processed independently and asynchronously
 - [ ] status per chunk and per segment basis instead of whole audiobook
-- [ ] need to integrate better auth for auth
 - [ ] refactor types in frontend and backend to be shared in a common package
 - [ ] (low priority) add a progress bar for the upload and TTS processing
 - [ ] (super low priority) need to seed voices db with system local voices
