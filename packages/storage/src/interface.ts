@@ -45,6 +45,8 @@ export interface StorageProvider {
     contentType: string,
   ): Promise<void>;
   deleteObject(bucket: string, key: string): Promise<void>;
+  // Recursively deletes all objects under a prefix — used for cleanup on book deletion
+  deleteFolder(bucket: string, prefix: string): Promise<void>;
   objectExists(bucket: string, key: string): Promise<boolean>;
 
   // Multipart Upload support for large audiobook files

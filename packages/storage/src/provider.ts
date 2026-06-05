@@ -8,6 +8,8 @@ import {
   UploadPartCommand,
   CompleteMultipartUploadCommand,
   AbortMultipartUploadCommand,
+  ListObjectsV2Command,
+  DeleteObjectsCommand,
 } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import type {
@@ -83,7 +85,7 @@ export class S3CompatibleStorageProvider implements StorageProvider {
       if (
         error.name === "NoSuchKey" ||
         error.$metadata?.httpStatusCode === 404 ||
-        error.message.includes("DOMParser is not defined")
+        error.message?.includes("DOMParser is not defined")
       ) {
         console.error(`Object not found: s3://${bucket}/${key}`);
         return null;
@@ -102,7 +104,7 @@ export class S3CompatibleStorageProvider implements StorageProvider {
         new GetObjectCommand({
           Bucket: bucket,
           Key: key,
-          Range: range, // Pass the HTTP Range header directly to S3
+          Range: range,
         }),
       );
       if (!response.Body) return null;
@@ -151,7 +153,7 @@ export class S3CompatibleStorageProvider implements StorageProvider {
       if (
         error.name === "NoSuchKey" ||
         error.$metadata?.httpStatusCode === 404 ||
-        error.message.includes("DOMParser is not defined")
+        error.message?.includes("DOMParser is not defined")
       ) {
         return null;
       }
@@ -179,6 +181,40 @@ export class S3CompatibleStorageProvider implements StorageProvider {
     await this.client.send(
       new DeleteObjectCommand({ Bucket: bucket, Key: key }),
     );
+  }
+
+  async deleteFolder(bucket: string, prefix: string): Promise<void> {
+    // Trailing slash prevents "book-1" matching "book-10", "book-11", etc.
+    const safePrefix = prefix.endsWith("/") ? prefix : `${prefix}/`;
+    let continuationToken: string | undefined;
+
+    do {
+      const listRes = await this.client.send(
+        new ListObjectsV2Command({
+          Bucket: bucket,
+          Prefix: safePrefix,
+          ContinuationToken: continuationToken,
+        }),
+      );
+
+      const objects = (listRes.Contents ?? [])
+        .filter((item) => item.Key)
+        .map((item) => ({ Key: item.Key! }));
+
+      if (objects.length > 0) {
+        // S3 DeleteObjects: max 1,000 keys per request
+        await this.client.send(
+          new DeleteObjectsCommand({
+            Bucket: bucket,
+            Delete: { Objects: objects, Quiet: true },
+          }),
+        );
+      }
+
+      continuationToken = listRes.IsTruncated
+        ? listRes.NextContinuationToken
+        : undefined;
+    } while (continuationToken);
   }
 
   async objectExists(bucket: string, key: string): Promise<boolean> {
@@ -214,7 +250,7 @@ export class S3CompatibleStorageProvider implements StorageProvider {
     uploadId: string,
     totalParts: number,
     expiresInSeconds = 3600,
-  ) {
+  ): Promise<Array<{ partNumber: number; url: string }>> {
     return Promise.all(
       Array.from({ length: totalParts }, async (_, i) => {
         const partNumber = i + 1;
@@ -263,68 +299,90 @@ export class S3CompatibleStorageProvider implements StorageProvider {
   }
 }
 
-//! need fix
+// ── R2 Native provider (local Wrangler dev via miniflare bindings) ─────────
+//
+// Wrangler's local R2 simulation does not support the S3 API (no presigned
+// URLs, no real multipart). Instead we:
+//   • Use the R2Bucket binding directly for get/put/delete/head/deleteFolder
+//   • Simulate multipart by routing part uploads through a local worker
+//     endpoint (/local-upload-part) that calls bucket.uploadPart() via the
+//     binding — the route must be registered in your dev router (see below)
+
 export class R2NativeStorageProvider implements StorageProvider {
-  // bindings maps bucket names to actual R2Bucket objects (e.g., env.RAW_UPLOADS)
   constructor(private bindings: Record<string, any>) {}
 
   private getBucket(name: string): any {
     const bucket = this.bindings[name];
     if (!bucket) {
-      throw new Error(
-        `R2 Bucket binding or mock not found for bucket: ${name}`,
-      );
+      throw new Error(`R2 bucket binding not found: "${name}"`);
     }
     return bucket;
   }
 
-  async getObjectWithRange(
+  async getPresignedDownloadUrl(
     bucket: string,
+    key: string,
+    expiresInSeconds = 900,
+  ): Promise<PresignedUrlResponse> {
+    // Local dev only — route must proxy the download through your worker
+    const url = `http://localhost:8787/local-download?bucket=${bucket}&key=${encodeURIComponent(key)}`;
+    return {
+      url,
+      key,
+      expiresAt: new Date(Date.now() + expiresInSeconds * 1000).toISOString(),
+    };
+  }
+
+  async getObject(
+    bucketName: string,
+    key: string,
+  ): Promise<StorageObjectPayload | null> {
+    const bucket = this.getBucket(bucketName);
+    const obj = await bucket.get(key);
+    if (!obj?.body) return null;
+
+    return {
+      stream: obj.body as ReadableStream<Uint8Array>,
+      transformToString: () => obj.text(),
+      transformToByteArray: async () => new Uint8Array(await obj.arrayBuffer()),
+    };
+  }
+
+  async getObjectWithRange(
+    bucketName: string,
     key: string,
     rangeHeader?: string,
   ): Promise<StorageObjectPayload | null> {
-    const r2 = this.getBucket(bucket);
+    const bucket = this.getBucket(bucketName);
 
-    // Parse Range header: "bytes=start-end" or "bytes=start-"
-    // R2GetOptions is from @cloudflare/workers-types, typing as Record<string,any> if missing
     let r2Options: Record<string, any> = {};
-    let parsedRange: { start: number; end?: number } | null = null;
+    let parsedStart = 0;
+    let parsedEnd: number | undefined;
 
     if (rangeHeader) {
       const match = rangeHeader.match(/bytes=(\d+)-(\d*)/);
       if (match) {
-        parsedRange = {
-          start: parseInt(match[1]),
-          end: match[2] ? parseInt(match[2]) : undefined,
-        };
+        parsedStart = parseInt(match[1], 10);
+        parsedEnd = match[2] ? parseInt(match[2], 10) : undefined;
         r2Options = {
           range:
-            parsedRange.end !== undefined
-              ? {
-                  offset: parsedRange.start,
-                  length: parsedRange.end - parsedRange.start + 1,
-                }
-              : { offset: parsedRange.start },
+            parsedEnd !== undefined
+              ? { offset: parsedStart, length: parsedEnd - parsedStart + 1 }
+              : { offset: parsedStart },
         };
       }
     }
 
-    const obj = await r2.get(key, r2Options);
+    const obj = await bucket.get(key, r2Options);
     if (!obj) return null;
 
     let rangeResponse: RangeResponse | undefined;
 
-    if (parsedRange && obj.size) {
-      const total = obj.size;
-      const start = parsedRange.start;
-      const end = parsedRange.end ?? total - 1;
-
-      rangeResponse = {
-        start,
-        end,
-        total,
-        bytes: new Uint8Array(), // Placeholder until read, similar to AWS implementation
-      };
+    if (rangeHeader && obj.size != null) {
+      const total: number = obj.size;
+      const start = parsedStart;
+      const end = parsedEnd ?? total - 1;
+      rangeResponse = { start, end, total, bytes: new Uint8Array() };
     }
 
     return {
@@ -339,115 +397,104 @@ export class R2NativeStorageProvider implements StorageProvider {
     };
   }
 
-  async getPresignedDownloadUrl(
-    bucket: string,
-    key: string,
-    expiresInSeconds = 900,
-  ): Promise<PresignedUrlResponse> {
-    // Locally or natively via workers, custom signing or a public/piped route is used.
-    // For local dev, we point back to our local server worker endpoint.
-    const url = `http://localhost:8787/local-download?bucket=${bucket}&key=${encodeURIComponent(key)}`;
-    return {
-      url,
-      key,
-      expiresAt: new Date(Date.now() + expiresInSeconds * 1000).toISOString(),
-    };
-  }
-
-  async getObject(
-    bucketName: string,
-    key: string,
-  ): Promise<StorageObjectPayload | null> {
-    const bucket = this.getBucket(bucketName);
-    const r2Object = await bucket.get(key);
-
-    if (!r2Object || !r2Object.body) return null;
-
-    return {
-      stream: r2Object.body,
-      async transformToString() {
-        return await r2Object.text();
-      },
-      async transformToByteArray() {
-        const buffer = await r2Object.arrayBuffer();
-        return new Uint8Array(buffer);
-      },
-    };
-  }
-
   async putObject(
-    bucket: string,
+    bucketName: string,
     key: string,
     body: any,
     contentType: string,
   ): Promise<void> {
-    await this.getBucket(bucket).put(key, body, {
+    await this.getBucket(bucketName).put(key, body, {
       httpMetadata: { contentType },
     });
   }
 
-  async deleteObject(bucket: string, key: string): Promise<void> {
-    await this.getBucket(bucket).delete(key);
+  async deleteObject(bucketName: string, key: string): Promise<void> {
+    await this.getBucket(bucketName).delete(key);
   }
 
-  async objectExists(bucket: string, key: string): Promise<boolean> {
-    const obj = await this.getBucket(bucket).head(key);
+  async deleteFolder(bucketName: string, prefix: string): Promise<void> {
+    const bucket = this.getBucket(bucketName);
+    const safePrefix = prefix.endsWith("/") ? prefix : `${prefix}/`;
+    let cursor: string | undefined;
+
+    do {
+      // R2 list() returns at most 1,000 keys per call
+      const listed = await bucket.list({
+        prefix: safePrefix,
+        cursor,
+        limit: 1000,
+      });
+
+      const keys: string[] = (listed.objects ?? []).map((o: any) => o.key);
+
+      if (keys.length > 0) {
+        // R2 native binding deletes one key at a time — run in parallel
+        await Promise.all(keys.map((k: string) => bucket.delete(k)));
+      }
+
+      cursor = listed.truncated ? listed.cursor : undefined;
+    } while (cursor);
+  }
+
+  async objectExists(bucketName: string, key: string): Promise<boolean> {
+    const obj = await this.getBucket(bucketName).head(key);
     return obj !== null;
   }
 
-  // Local Wrangler development simulates multipart uploads using standard R2 features
+  // ── Local multipart simulation ─────────────────────────────────────────
+  // Wrangler miniflare supports createMultipartUpload / uploadPart natively.
+  // Part uploads are proxied through a local worker route so the browser can
+  // PUT to a real URL (presigned URLs don't exist locally).
+
   async initiateMultipartUpload(
-    bucket: string,
+    bucketName: string,
     key: string,
     contentType: string,
   ): Promise<string> {
-    const upload = await this.getBucket(bucket).createMultipartUpload(key, {
+    const upload = await this.getBucket(bucketName).createMultipartUpload(key, {
       httpMetadata: { contentType },
     });
     return upload.uploadId;
   }
 
   async getMultipartPresignedUrls(
-    bucket: string,
+    bucketName: string,
     key: string,
     uploadId: string,
     totalParts: number,
-  ) {
-    // For local dev, we generate mock URLs pointing back to our local worker router
-    // that intercepts the PUT request and calls upload.uploadPart()
+    _expiresInSeconds?: number, // unused locally
+  ): Promise<Array<{ partNumber: number; url: string }>> {
     return Array.from({ length: totalParts }, (_, i) => {
       const partNumber = i + 1;
       return {
         partNumber,
-        url: `http://localhost:8787/local-upload-part?bucket=${bucket}&key=${encodeURIComponent(key)}&uploadId=${uploadId}&partNumber=${partNumber}`,
+        // This route must exist in your local dev Hono router — see note below
+        url: `http://localhost:8787/local-upload-part?bucket=${bucketName}&key=${encodeURIComponent(key)}&uploadId=${encodeURIComponent(uploadId)}&partNumber=${partNumber}`,
       };
     });
   }
 
   async completeMultipartUpload(
-    bucket: string,
+    bucketName: string,
     key: string,
     uploadId: string,
     parts: MultipartPart[],
   ): Promise<void> {
-    const upload = await this.getBucket(bucket).resumeMultipartUpload(
+    const upload = await this.getBucket(bucketName).resumeMultipartUpload(
       key,
       uploadId,
     );
-    // Format interface parts to match what Cloudflare's native API expects
-    const r2Parts = parts.map((p) => ({
-      partNumber: p.PartNumber,
-      etag: p.ETag,
-    }));
-    await upload.complete(r2Parts);
+    await upload.complete(
+      parts.map((p) => ({ partNumber: p.PartNumber, etag: p.ETag })),
+    );
   }
 
   async abortMultipartUpload(
-    bucket: string,
+    bucketName: string,
     key: string,
     uploadId: string,
   ): Promise<void> {
-    const upload = await this.getBucket(bucket).resumeMultipartUpload(
+    const upload = await this.getBucket(bucketName).resumeMultipartUpload(
       key,
       uploadId,
     );
