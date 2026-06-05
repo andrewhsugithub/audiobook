@@ -5,7 +5,10 @@ import Header from '../components/Header'
 import Rating from '../components/Rating'
 import { HlsAudioPlayer } from '../components/HlsAudio'
 import { useHlsStream } from '../hooks/useHlsStream'
-import { useAudiobookInfo, useAudiobookUploader } from '../hooks/useAudiobookInfo'
+import {
+  useAudiobookInfo,
+  useAudiobookUploader,
+} from '../hooks/useAudiobookInfo'
 import { UploadForm } from '../components/forms/UploadForm'
 import { EditBookForm } from '../components/forms/EditBookForm'
 import { useAuth } from '../hooks/useAuth'
@@ -14,7 +17,7 @@ import {
   useAddToLibrary,
   useRemoveFromLibrary,
 } from '../hooks/useLibrary'
-import BookmarkButton from '../components/BookmarkButton' // Component used below
+import BookmarkButton from '../components/BookmarkButton'
 import { API_BASE_URL as BASE_URL } from '../utils/api'
 import { useToast } from '../components/Toast'
 
@@ -49,7 +52,8 @@ function BookComponent() {
     error: infoError,
   } = useAudiobookInfo(bookId)
 
-  const { data: uploaderData } = useAudiobookUploader(bookId)
+  const { data: uploaderData, isLoading: isUploaderLoading } =
+    useAudiobookUploader(bookId)
   const uploader = uploaderData?.uploader
 
   const {
@@ -58,8 +62,6 @@ function BookComponent() {
     error: streamError,
     isSuccess: isStreamReady,
   } = useHlsStream(bookId, { enabled: book?.isReady === true })
-
-  const audioURL = `${BASE_URL}/audiobook/${bookId}/master.m3u8`
 
   // ── Dynamic Permissions Configuration ──────────────────────────────
   // - Admin: can modify anything anywhere
@@ -168,7 +170,9 @@ function BookComponent() {
                 }`}
               />
             ) : (
-              <span className="text-xs text-[var(--sea-ink-soft)]">No Cover</span>
+              <span className="text-xs text-[var(--sea-ink-soft)]">
+                No Cover
+              </span>
             )}
 
             {/* Direct Image Placement Input Layer Overlay */}
@@ -241,35 +245,42 @@ function BookComponent() {
                 )}
               </small>
 
-              {/* ── Uploaded by ─────────────────────────────────────────── */}
-              {uploader?.name && (
-                <Link
-                  to="/users/$userId"
-                  params={{ userId: uploader.id }}
-                  search={{ name: uploader.name }}
-                  className="group mt-3 inline-flex w-fit items-center gap-2 text-sm text-[var(--sea-ink-soft)] transition-colors hover:text-[var(--sea-ink)]"
-                >
-                  {uploader.image ? (
-                    <img
-                      src={uploader.image}
-                      alt={uploader.name}
-                      className="h-5 w-5 rounded-full object-cover"
-                    />
-                  ) : (
-                    <span
-                      aria-hidden
-                      className="grid h-5 w-5 place-content-center rounded-full bg-[var(--chip-bg)] text-[10px] font-semibold uppercase"
-                    >
-                      {uploader.name.charAt(0)}
+              {/* ── Uploaded by Area (With loading fallback) ───────────── */}
+              {isInfoLoading || isUploaderLoading ? (
+                <div className="mt-3 flex items-center gap-2">
+                  <div className="h-5 w-5 rounded-full animate-pulse bg-[var(--line)]" />
+                  <div className="h-4 w-32 rounded animate-pulse bg-[var(--line)]" />
+                </div>
+              ) : (
+                uploader?.name && (
+                  <Link
+                    to="/users/$userId"
+                    params={{ userId: uploader.id }}
+                    search={{ name: uploader.name }}
+                    className="group mt-3 inline-flex w-fit items-center gap-2 text-sm text-[var(--sea-ink-soft)] transition-colors hover:text-[var(--sea-ink)]"
+                  >
+                    {uploader.image ? (
+                      <img
+                        src={uploader.image}
+                        alt={uploader.name}
+                        className="h-5 w-5 rounded-full object-cover"
+                      />
+                    ) : (
+                      <span
+                        aria-hidden
+                        className="grid h-5 w-5 place-content-center rounded-full bg-[var(--chip-bg)] text-[10px] font-semibold uppercase"
+                      >
+                        {uploader.name.charAt(0)}
+                      </span>
+                    )}
+                    <span>
+                      Uploaded by{' '}
+                      <span className="font-semibold text-[var(--sea-ink)] group-hover:underline">
+                        {uploader.name}
+                      </span>
                     </span>
-                  )}
-                  <span>
-                    Uploaded by{' '}
-                    <span className="font-semibold text-[var(--sea-ink)] group-hover:underline">
-                      {uploader.name}
-                    </span>
-                  </span>
-                </Link>
+                  </Link>
+                )
               )}
 
               <div className="mt-4 flex items-center gap-2 text-sm font-semibold tracking-wide">
@@ -359,18 +370,26 @@ function BookComponent() {
                       later!
                     </div>
                   ))}
-                {isStreamLoading && (
-                  <div className="text-sm opacity-60 animate-pulse flex items-center gap-2">
-                    <span>🔒</span> Establishing secure audio stream connection…
-                  </div>
-                )}
+
+                {(isInfoLoading || isStreamLoading) &&
+                  book?.isReady === true && (
+                    <div className="text-sm opacity-60 animate-pulse flex items-center gap-2">
+                      <span>🔒</span> Establishing secure audio stream
+                      connection…
+                    </div>
+                  )}
+
                 {isStreamError && (
                   <div className="text-sm text-error p-3 bg-red-500/10 rounded-lg border border-red-500/20">
                     ⚠️ Secure Stream Error: {streamError.message}
                   </div>
                 )}
-                {isStreamReady && (
-                  <HlsAudioPlayer src={audioURL} title={book?.title} />
+
+                {isStreamReady && book?.version && (
+                  <HlsAudioPlayer
+                    src={`${BASE_URL}/audiobook/${bookId}/${book.version}/master.m3u8`}
+                    title={book?.title}
+                  />
                 )}
               </div>
             </>
