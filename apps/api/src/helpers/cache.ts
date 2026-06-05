@@ -22,7 +22,6 @@ export function buildCacheKey(url: string, stripQuery = true): Request {
   try {
     parsed = new URL(url);
   } catch {
-    // Surface a developer-friendly error rather than the opaque CF one
     throw new TypeError(
       `buildCacheKey received an unparseable URL: "${url}". ` +
         `Pass c.req.url which is always fully-qualified in CF Workers.`,
@@ -41,70 +40,10 @@ export function buildCacheKey(url: string, stripQuery = true): Request {
   return new Request(parsed.toString(), { method: "GET" });
 }
 
-// /**
-//  * Build the dual SWR cache-key pair for a given URL.
-//  *
-//  * The Workers Cache API does NOT honour `stale-while-revalidate` in
-//  * cache.put/cache.match, so we emulate it with two keys:
-//  *
-//  *   fresh:<url>  — short TTL; miss triggers background revalidation
-//  *   stale:<url>  — long TTL; served immediately while fresh revalidates
-//  *
-//  * ⚠️ The `fresh:` and `stale:` prefixes produce non-http(s) URLs which
-//  * the Cache API would reject if used directly. Instead we embed the
-//  * clean URL as a query param on a synthetic https key so the Cache API
-//  * accepts it while the key remains unique per original URL.
-//  */
-
-// export async function bustInfoCache(
-//   _c: Context<Env>,
-//   audiobookId: string,
-//   imageExt: string | null = null,
-// ): Promise<void> {
-//   const cache = caches.default;
-//   const origin = new URL(_c.req.url).origin;
-
-//   const deletions: Promise<boolean>[] = [];
-
-//   // Target Metadata SWR Keys
-//   const baseTargetUrl = `${origin}/audiobook/${audiobookId}/info`;
-//   const { freshKey, staleKey } = buildSwrKeys(baseTargetUrl);
-
-//   console.log("[bustInfoCache] Busting keys for metadata:", baseTargetUrl);
-//   deletions.push(cache.delete(freshKey));
-//   deletions.push(cache.delete(staleKey));
-//   deletions.push(cache.delete(new Request(baseTargetUrl, { method: "GET" })));
-
-//   // ── 2. Target Clean Static Asset Key ─────────────────────────────
-//   if (imageExt) {
-//     const assetUrl = `${origin}/cover/${audiobookId}.${imageExt}`;
-//     console.log(
-//       "[bustInfoCache] Busting static asset key for cover image:",
-//       assetUrl,
-//     );
-
-//     // Wrap with your internal key builder utility if your asset route maps keys specifically
-//     deletions.push(cache.delete(new Request(assetUrl, { method: "GET" })));
-//   }
-
-//   // Await all deletions concurrently
-//   const results = await Promise.allSettled(deletions);
-
-//   results.forEach((r, i) => {
-//     if (r.status === "rejected") {
-//       console.warn(
-//         `[bustInfoCache] Cache eviction step #${i} failed:`,
-//         r.reason,
-//       );
-//     } else {
-//       console.log(
-//         `[bustInfoCache] Cache eviction step #${i} status success:`,
-//         r.value,
-//       );
-//     }
-//   });
-// }
-
+/**
+ * Build the dual SWR cache-key pair for a given URL.
+ * Emulates stale-while-revalidate behaviors inside the Cloudflare Workers Cache API.
+ */
 export function buildSwrKeys(url: string): {
   freshKey: Request;
   staleKey: Request;
@@ -119,7 +58,6 @@ export function buildSwrKeys(url: string): {
   parsed.search = "";
   const clean = encodeURIComponent(parsed.toString());
 
-  // Use the same origin so the Cache API namespace stays consistent, with a synthetic path prefix to differentiate fresh vs stale.
   const freshKey = new Request(`${parsed.origin}/__swr_fresh__?u=${clean}`, {
     method: "GET",
   });
@@ -130,6 +68,9 @@ export function buildSwrKeys(url: string): {
   return { freshKey, staleKey };
 }
 
+/**
+ * Evict all metadata (/info) SWR keys for a given audiobook id.
+ */
 export async function bustInfoCache(
   _c: Context<Env>,
   audiobookId: string,
@@ -155,9 +96,58 @@ export async function bustInfoCache(
   results.forEach((r, i) => {
     if (r.status === "rejected") {
       console.warn(
-        `[bustInfoCache] Cache eviction step #${i} failed:`,
+        `[bustInfoCache] Metadata cache eviction step #${i} failed:`,
         r.reason,
       );
     }
   });
+}
+
+/**
+ * FIXED: Evict all uploader (/uploader) SWR keys for a given audiobook id.
+ * Uses the same buildSwrKeys wrapper since it uses the swrCache middleware.
+ */
+export async function bustUploaderCache(
+  _c: Context<Env>,
+  audiobookId: string,
+): Promise<void> {
+  const cache = caches.default;
+  const origin = new URL(_c.req.url).origin;
+  const deletions: Promise<boolean>[] = [];
+
+  // Re-create the exact target endpoint that the worker interceptor caches against
+  const baseTargetUrl = `${origin}/audiobook/${audiobookId}/uploader`;
+  const { freshKey, staleKey } = buildSwrKeys(baseTargetUrl);
+
+  console.log(
+    "[bustUploaderCache] Evicting SWR cache keys for uploader:",
+    baseTargetUrl,
+  );
+  deletions.push(cache.delete(freshKey));
+  deletions.push(cache.delete(staleKey));
+
+  const results = await Promise.allSettled(deletions);
+
+  results.forEach((r, i) => {
+    if (r.status === "rejected") {
+      console.warn(
+        `[bustUploaderCache] Uploader cache eviction step #${i} failed:`,
+        r.reason,
+      );
+    }
+  });
+}
+
+/**
+ * CONVENIENCE HELPER: Purge all book caches (Info and Uploader routes) at once.
+ * Highly recommended for your PATCH and DELETE router targets.
+ */
+export async function bustAllBookCaches(
+  _c: Context<Env>,
+  audiobookId: string,
+): Promise<void> {
+  await Promise.allSettled([
+    bustInfoCache(_c, audiobookId),
+    bustUploaderCache(_c, audiobookId),
+  ]);
 }

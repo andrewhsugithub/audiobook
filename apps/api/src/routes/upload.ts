@@ -165,14 +165,20 @@ app.post("/", zValidator("json", initiateSchema), async (c) => {
     uploadExpiresAt,
   });
 
-  return c.json({
-    bookId,
-    status: "ready_to_upload",
-    strategy: "multipart",
-    uploadId,
-    fileKey: rawUploadKey,
-    expiresAt: uploadExpiresAt.toISOString(),
-  } as const);
+  return c.json(
+    {
+      bookId,
+      status: "ready_to_upload",
+      strategy: "multipart",
+      uploadId,
+      fileKey: rawUploadKey,
+      expiresAt: uploadExpiresAt.toISOString(),
+    } as const,
+    200,
+    {
+      "Cache-Control": "private, no-store",
+    },
+  );
 });
 
 app.post(
@@ -205,7 +211,9 @@ app.post(
       UPLOAD_EXPIRY_SECONDS,
     );
 
-    return c.json({ presignedUrls });
+    return c.json({ presignedUrls }, 200, {
+      "Cache-Control": "private, no-store",
+    });
   },
 );
 
@@ -264,7 +272,9 @@ app.post("/complete", zValidator("json", completeSchema), async (c) => {
     fileName,
   } satisfies ParserJobData);
 
-  return c.json({ ok: true, bookId, status: "processing" } as const);
+  return c.json({ ok: true, bookId, status: "processing" } as const, 200, {
+    "Cache-Control": "private, no-store",
+  });
 });
 
 app.post("/abort", zValidator("json", abortSchema), async (c) => {
@@ -296,7 +306,9 @@ app.post("/abort", zValidator("json", abortSchema), async (c) => {
         .where(eq(assets.audiobookId, bookId)),
     ]);
 
-    return c.json({ ok: true });
+    return c.json({ ok: true }, 200, {
+      "Cache-Control": "private, no-store",
+    });
   } catch (err: any) {
     if (
       err?.Code === "NoSuchUpload" ||
@@ -315,7 +327,13 @@ app.post("/abort", zValidator("json", abortSchema), async (c) => {
           .set({ uploadStatus: "failed" })
           .where(eq(assets.audiobookId, bookId)),
       ]);
-      return c.json({ ok: true, note: "Upload session was already gone" });
+      return c.json(
+        { ok: true, note: "Upload session was already gone" },
+        200,
+        {
+          "Cache-Control": "private, no-store",
+        },
+      );
     }
     throw err; // bubble up to globalErrorHandler
   }

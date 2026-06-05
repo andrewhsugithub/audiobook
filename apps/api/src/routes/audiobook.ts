@@ -5,7 +5,12 @@ import { getCookie, setCookie, deleteCookie } from "hono/cookie";
 import { sign, verify } from "hono/jwt";
 import { eq, ilike, or, desc, and, asc, sql } from "@audiobook/db/src/index";
 import { getDb } from "@audiobook/db/src";
-import { assets, audiobooks, user } from "@audiobook/db/src/schema/schema";
+import {
+  assets,
+  audiobooks,
+  segments,
+  user,
+} from "@audiobook/db/src/schema/schema";
 import { storage } from "@audiobook/storage/src/storage.cf";
 import type { Env } from "../types/env";
 import { authMiddleware } from "../middleware/auth";
@@ -22,7 +27,7 @@ import {
 import { ALLOWED_ORIGINS } from "../constants/cors";
 import { getHlsCookieName, getHlsCookieOptions } from "../helpers/cookie";
 import { getMimeType, getSegmentContentType } from "../helpers/mime";
-import { buildCacheKey, bustInfoCache } from "../helpers/cache";
+import { buildCacheKey, bustAllBookCaches } from "../helpers/cache";
 import {
   MAX_FILE_SIZE_BYTES,
   UPLOAD_EXPIRY_SECONDS,
@@ -64,102 +69,100 @@ const searchSchema = z.object({
 });
 
 // METADATA ENDPOINT WITH ETAG SWR VALIDATION
-app.get(
-  "/:id/info",
-  swrCache({ freshTtl: 3_600, staleTtl: 86_400 }),
-  async (c) => {
-    const audiobookId = c.req.param("id");
-    const db = getDb(c.env.HYPERDRIVE.connectionString);
+app.get("/:id/info", async (c) => {
+  const audiobookId = c.req.param("id");
+  const db = getDb(c.env.HYPERDRIVE.connectionString);
 
-    let currentUserId: string | null = null;
-    let isAdmin = false;
+  let currentUserId: string | null = null;
+  let isAdmin = false;
 
-    try {
-      const { createAuth } = await import("../lib/auth");
+  try {
+    const { createAuth } = await import("../lib/auth");
 
-      const auth = createAuth(c.env);
+    const auth = createAuth(c.env);
 
-      const session = await auth.api.getSession({ headers: c.req.raw.headers });
-      if (session?.user) {
-        currentUserId = session.user.id;
-        isAdmin = session.user.role === "admin";
-      }
-    } catch {
-      // Unauthenticated => guest
+    const session = await auth.api.getSession({ headers: c.req.raw.headers });
+    if (session?.user) {
+      currentUserId = session.user.id;
+      isAdmin = session.user.role === "admin";
     }
+  } catch {
+    // Unauthenticated => guest
+  }
 
-    const [book] = await db
-      .select({
-        id: audiobooks.id,
-        status: audiobooks.status,
-        title: audiobooks.title,
-        author: audiobooks.author,
-        description: audiobooks.description,
-        coverBucketName: audiobooks.coverBucketName,
-        coverS3Key: audiobooks.coverS3Key,
-        ratings: audiobooks.ratings,
-        errorMessage: audiobooks.errorMessage,
-        visibility: audiobooks.visibility,
-        userId: audiobooks.userId,
-        updatedAt: audiobooks.updatedAt, // Retrieved to make our ETag dynamic
-      })
-      .from(audiobooks)
-      .where(eq(audiobooks.id, audiobookId));
+  const [book] = await db
+    .select({
+      id: audiobooks.id,
+      status: audiobooks.status,
+      title: audiobooks.title,
+      author: audiobooks.author,
+      description: audiobooks.description,
+      coverBucketName: audiobooks.coverBucketName,
+      coverS3Key: audiobooks.coverS3Key,
+      ratings: audiobooks.ratings,
+      errorMessage: audiobooks.errorMessage,
+      visibility: audiobooks.visibility,
+      version: audiobooks.version,
+      userId: audiobooks.userId,
+      updatedAt: audiobooks.updatedAt, // Retrieved to make our ETag dynamic
+    })
+    .from(audiobooks)
+    .where(eq(audiobooks.id, audiobookId));
 
-    if (!book) return c.json({ error: "Audiobook not found" }, 404);
+  if (!book) return c.json({ error: "Audiobook not found" }, 404);
 
-    // Block access to other people's private books except for admins
-    if (
-      book.visibility === "private" &&
-      book.userId !== currentUserId &&
-      !isAdmin
-    ) {
-      return c.json({ error: "Audiobook not found" }, 404); // 404 not 403 — don't leak existence
-    }
+  // Block access to other people's private books except for admins
+  if (
+    book.visibility === "private" &&
+    book.userId !== currentUserId &&
+    !isAdmin
+  ) {
+    return c.json({ error: "Audiobook not found" }, 404); // 404 not 403 — don't leak existence
+  }
 
-    let coverUrl = `${c.env.RANDOM_COVER_BASE_URL}/${book.id}/300/450`;
-    if (book.coverBucketName && book.coverS3Key) {
-      const baseUrl = new URL(c.req.url).origin;
-      // Pull exact versioned hashed filename from S3 key store path
-      const filename = book.coverS3Key.split("/").pop();
-      coverUrl = `${baseUrl}/cover/${book.id}/${filename}`;
-    }
+  let coverUrl = `${c.env.RANDOM_COVER_BASE_URL}/${book.id}/300/450`;
+  if (book.coverBucketName && book.coverS3Key) {
+    const baseUrl = new URL(c.req.url).origin;
+    // Pull exact versioned hashed filename from S3 key store path
+    const filename = book.coverS3Key.split("/").pop();
+    coverUrl = `${baseUrl}/cover/${book.id}/${filename}`;
+  }
 
-    const responseData = {
-      id: book.id,
-      status: book.status,
-      title: book.title,
-      author: book.author,
-      description: book.description,
-      ratings: book.ratings,
-      coverUrl,
-      isReady: book.status === "completed",
-      errorMessage: book.errorMessage,
-      visibility: book.visibility,
-      isOwner: currentUserId ? book.userId === currentUserId : false,
-      updatedAt: book.updatedAt,
-    };
+  const responseData = {
+    id: book.id,
+    status: book.status,
+    title: book.title,
+    author: book.author,
+    description: book.description,
+    ratings: book.ratings,
+    coverUrl,
+    version: book.version,
+    isReady: book.status === "completed",
+    errorMessage: book.errorMessage,
+    visibility: book.visibility,
+    isOwner: currentUserId ? book.userId === currentUserId : false,
+    updatedAt: book.updatedAt,
+  };
 
-    // Cloudflare prefers Weak ETags W/"..." if features like Brotli compression are active.
-    // const eTagValue = await generateETag(responseData);
-    const eTagValue = `W/"${book.id}-${book.updatedAt}-${currentUserId ?? "guest"}"`;
+  // Cloudflare prefers Weak ETags W/"..." if features like Brotli compression are active.
+  // const eTagValue = await generateETag(responseData);
+  const eTagValue = `W/"${book.id}-${book.status}-${book.updatedAt}-${currentUserId ?? "guest"}"`;
 
-    if (c.req.header("If-None-Match") === eTagValue) {
-      return new Response(null, {
-        status: 304,
-        headers: {
-          ETag: eTagValue,
-          "Cache-Control": "no-cache, must-revalidate",
-        },
-      });
-    }
-
-    return c.json(responseData, 200, {
-      "Cache-Control": "no-cache, must-revalidate",
-      ETag: eTagValue,
+  if (c.req.header("If-None-Match") === eTagValue) {
+    return new Response(null, {
+      status: 304,
+      headers: {
+        ETag: eTagValue,
+        "Cache-Control": "private, no-cache, must-revalidate",
+      },
     });
-  },
-);
+  }
+
+  return c.json(responseData, 200, {
+    "Cache-Control": "private, no-cache, must-revalidate",
+    ETag: eTagValue,
+  });
+});
 
 // Short-lived — polling endpoint, no caching
 app.get("/:id/status", async (c) => {
@@ -200,8 +203,7 @@ app.get("/:id/status", async (c) => {
 });
 
 // Returns the user who uploaded (owns) the book, if any.
-// Registered before the catch-all "/:id/:filename" route so it isn't
-// swallowed by the HLS file handler.
+// Registered before the catch-all "/:id/:filename" route so it isn't swallowed by the HLS file handler.
 app.get("/:id/uploader", async (c) => {
   const audiobookId = c.req.param("id");
   const db = getDb(c.env.HYPERDRIVE.connectionString);
@@ -227,6 +229,7 @@ app.get("/:id/uploader", async (c) => {
     .select({
       visibility: audiobooks.visibility,
       ownerId: audiobooks.userId,
+      updatedAt: audiobooks.updatedAt,
       uploaderId: user.id,
       uploaderName: user.name,
       uploaderImage: user.image,
@@ -237,8 +240,7 @@ app.get("/:id/uploader", async (c) => {
 
   if (!row) return c.json({ error: "Audiobook not found" }, 404);
 
-  // Mirror the /info privacy rule — don't leak private books (or their
-  // uploader) to anyone but the owner or an admin.
+  // Mirror the /info privacy rule — don't leak private books (or their uploader) to anyone but the owner or an admin.
   if (
     row.visibility === "private" &&
     row.ownerId !== currentUserId &&
@@ -247,39 +249,58 @@ app.get("/:id/uploader", async (c) => {
     return c.json({ error: "Audiobook not found" }, 404);
   }
 
-  return c.json(
-    {
-      uploader: row.uploaderId
-        ? {
-            id: row.uploaderId,
-            name: row.uploaderName,
-            image: row.uploaderImage,
-          }
-        : null,
-    },
-    200,
-    { "Cache-Control": "no-cache, must-revalidate" },
-  );
+  const responseData = {
+    uploader: row.uploaderId
+      ? {
+          id: row.uploaderId,
+          name: row.uploaderName,
+          image: row.uploaderImage,
+        }
+      : null,
+  };
+
+  // Calculate ETag matching the book data states
+  const eTagValue = `W/"uploader-${audiobookId}-${row.updatedAt}-${currentUserId ?? "guest"}"`;
+
+  if (c.req.header("If-None-Match") === eTagValue) {
+    return new Response(null, {
+      status: 304,
+      headers: {
+        ETag: eTagValue,
+        "Cache-Control": "private, no-cache, must-revalidate",
+      },
+    });
+  }
+
+  return c.json(responseData, 200, {
+    "Cache-Control": "private, no-cache, must-revalidate",
+    ETag: eTagValue,
+  });
 });
 
 // Public profile of an uploader, used by the "books by this user" page.
 // Registered before the catch-all "/:id/:filename" route (the static "user"
 // segment wins over the "/:id" param, but order keeps intent clear).
-app.get("/user/:userId", async (c) => {
-  const profileUserId = c.req.param("userId");
-  const db = getDb(c.env.HYPERDRIVE.connectionString);
+app.get(
+  "/user/:userId",
+  swrCache({ freshTtl: 1_800, staleTtl: 86_400 }),
+  async (c) => {
+    const profileUserId = c.req.param("userId");
+    const db = getDb(c.env.HYPERDRIVE.connectionString);
 
-  const [row] = await db
-    .select({ id: user.id, name: user.name, image: user.image })
-    .from(user)
-    .where(eq(user.id, profileUserId));
+    const [row] = await db
+      .select({ id: user.id, name: user.name, image: user.image })
+      .from(user)
+      .where(eq(user.id, profileUserId));
 
-  if (!row) return c.json({ error: "User not found" }, 404);
+    if (!row) return c.json({ error: "User not found" }, 404);
 
-  return c.json({ user: row }, 200, {
-    "Cache-Control": "no-cache, must-revalidate",
-  });
-});
+    return c.json({ user: row }, 200, {
+      "Cache-Control":
+        "public, max-age=0, s-maxage=1800, stale-while-revalidate=86400",
+    });
+  },
+);
 
 app.post("/:id/session", async (c) => {
   const audiobookId = c.req.param("id");
@@ -314,14 +335,20 @@ app.post("/:id/session", async (c) => {
     getHlsCookieOptions(c, audiobookId, TOKEN_TTL),
   );
 
-  return c.json({
-    ok: true,
-    expiresIn: TOKEN_TTL,
-    expiresAt: new Date((now + TOKEN_TTL) * 1_000).toISOString(),
-    refreshAt: new Date(
-      (now + TOKEN_TTL - PRE_REFRESH_BUFFER) * 1_000,
-    ).toISOString(),
-  });
+  return c.json(
+    {
+      ok: true,
+      expiresIn: TOKEN_TTL,
+      expiresAt: new Date((now + TOKEN_TTL) * 1_000).toISOString(),
+      refreshAt: new Date(
+        (now + TOKEN_TTL - PRE_REFRESH_BUFFER) * 1_000,
+      ).toISOString(),
+    },
+    200,
+    {
+      "Cache-Control": "private, no-store",
+    },
+  );
 });
 
 app.post("/:id/refresh", async (c) => {
@@ -375,14 +402,20 @@ app.post("/:id/refresh", async (c) => {
     getHlsCookieOptions(c, audiobookId, TOKEN_TTL),
   );
 
-  return c.json({
-    ok: true,
-    expiresIn: TOKEN_TTL,
-    expiresAt: new Date((now + TOKEN_TTL) * 1_000).toISOString(),
-    refreshAt: new Date(
-      (now + TOKEN_TTL - PRE_REFRESH_BUFFER) * 1_000,
-    ).toISOString(),
-  });
+  return c.json(
+    {
+      ok: true,
+      expiresIn: TOKEN_TTL,
+      expiresAt: new Date((now + TOKEN_TTL) * 1_000).toISOString(),
+      refreshAt: new Date(
+        (now + TOKEN_TTL - PRE_REFRESH_BUFFER) * 1_000,
+      ).toISOString(),
+    },
+    200,
+    {
+      "Cache-Control": "private, no-store",
+    },
+  );
 });
 
 app.get("/:id/:filename{.+}", async (c) => {
@@ -391,47 +424,54 @@ app.get("/:id/:filename{.+}", async (c) => {
   const origin = c.req.header("Origin") ?? "";
   const rangeHeader = c.req.header("Range");
 
-  const sessionToken = getCookie(c, getHlsCookieName(audiobookId));
-  if (!sessionToken) return c.json({ error: "Unauthorized access" }, 401);
-
-  try {
-    const payload = await verify(sessionToken, c.env.TOKEN_SECRET, "HS256");
-    if (payload.sub !== audiobookId)
-      return c.json({ error: "Scope mismatch" }, 403);
-  } catch {
-    return c.json({ error: "Session verification expired" }, 401);
-  }
-
-  const isPlaylist = filename.endsWith(".m3u8");
-
-  // Always-dynamic CORS headers — never stored in the CDN cache
-  const corsHeaders = {
+  // Universal media and streaming headers applied to ALL responses (including errors)
+  const universalHeaders = {
     "Access-Control-Allow-Origin": ALLOWED_ORIGINS.includes(origin as any)
       ? origin
       : "",
     "Access-Control-Allow-Credentials": "true",
+    "Accept-Ranges": "bytes", // Crucial for Safari / iOS audio scrubbing stability
   };
 
-  // ── Cache check (segments only, no range, no playlists) ─────────────────
-  const cache = caches.default;
+  const sessionToken = getCookie(c, getHlsCookieName(audiobookId));
+  if (!sessionToken)
+    return c.json({ error: "Unauthorized access" }, 401, universalHeaders);
 
+  try {
+    const payload = await verify(sessionToken, c.env.TOKEN_SECRET, "HS256");
+    if (payload.sub !== audiobookId)
+      return c.json({ error: "Scope mismatch" }, 403, universalHeaders);
+  } catch {
+    return c.json(
+      { error: "Session verification expired" },
+      401,
+      universalHeaders,
+    );
+  }
+
+  const isPlaylist = filename.endsWith(".m3u8");
+
+  // Normalize range: Treat no-range and "bytes=0-" identically as full-file requests
+  const isFullFileRequest = !rangeHeader || rangeHeader.trim() === "bytes=0-";
+
+  const cache = caches.default;
   let cacheKey: Request | null = null;
   try {
     cacheKey = buildCacheKey(c.req.url);
   } catch (e) {
-    // Malformed URL — skip caching entirely, still serve the asset
     console.warn("[get-file] Could not build cache key, bypassing cache:", e);
   }
 
-  if (!isPlaylist && !rangeHeader && cacheKey) {
+  // ── 1. Cache Read Check (Segments matching full-file or bytes=0-) ──────
+  if (!isPlaylist && isFullFileRequest && cacheKey) {
     try {
       const cached = await cache.match(cacheKey);
       if (cached) {
         return new Response(cached.body, {
-          status: cached.status,
+          status: 200, // Safe and standard to respond with 200 OK for a bytes=0- request
           headers: {
             ...Object.fromEntries(cached.headers.entries()),
-            ...corsHeaders,
+            ...universalHeaders,
             "X-Cache-Status": "HIT",
           },
         });
@@ -441,19 +481,23 @@ app.get("/:id/:filename{.+}", async (c) => {
     }
   }
 
-  // ── S3 upstream retrieval ────────────────────────────────────────────────
+  // S3 Upstream Retrieval ────────────────────────────────────────────
   const store = storage.getInstance(c.env);
   const s3Key = `audiobooks/${audiobookId}/hls/${filename}`;
 
+  // OPTIMIZATION: If it's a full file request or bytes=0-, don't pass a range to S3.
+  // This forces S3 to return a clean 200 OK full-stream that we can comfortably cache.
+  const s3RangeParam = isFullFileRequest ? undefined : rangeHeader;
   const s3Object = await store.getObjectWithRange(
     c.env.MEDIA_BUCKET_NAME,
     s3Key,
-    rangeHeader ?? undefined,
+    s3RangeParam,
   );
 
-  if (!s3Object) return c.json({ error: "Media asset not found" }, 404);
+  if (!s3Object)
+    return c.json({ error: "Media asset not found" }, 404, universalHeaders);
 
-  // ── Serve HLS playlist manifest (never cache) ────────────────────────────
+  // Serve HLS Playlist Manifest (.m3u8) ──────────────────────────────
   if (isPlaylist) {
     return new Response(s3Object.stream, {
       status: 200,
@@ -461,13 +505,13 @@ app.get("/:id/:filename{.+}", async (c) => {
         "Content-Type": "application/vnd.apple.mpegurl",
         "Cache-Control": CACHE_CONTROL_PLAYLIST,
         "X-Cache-Status": "MISS",
-        ...corsHeaders,
+        ...universalHeaders,
       },
     });
   }
 
-  // ── Serve range requests (206 Partial Content) ───────────────────────────
-  if (rangeHeader && s3Object.rangeResponse) {
+  // Serve Specific Sliced Range Requests (206 Partial Content) ────────
+  if (!isFullFileRequest && rangeHeader && s3Object.rangeResponse) {
     const { start, end, total } = s3Object.rangeResponse;
     return new Response(s3Object.stream, {
       status: 206,
@@ -475,56 +519,57 @@ app.get("/:id/:filename{.+}", async (c) => {
         "Content-Type": getSegmentContentType(filename),
         "Content-Range": `bytes ${start}-${end}/${total}`,
         "Content-Length": String(end - start + 1),
-        "Accept-Ranges": "bytes",
         "Cache-Control": CACHE_CONTROL_IMMUTABLE,
         "X-Cache-Status": "MISS",
-        ...corsHeaders,
+        ...universalHeaders,
       },
     });
   }
 
-  // ── Serve & cache full segment (200 OK) ──────────────────────────────────
-  // CORS headers are intentionally EXCLUDED from the cached entry to prevent
-  // CORS cache poisoning — they are added dynamically after every cache read.
-  const responseForCache = new Response(s3Object.stream, {
-    status: 200,
-    headers: {
-      "Content-Type": getSegmentContentType(filename),
-      "Cache-Control": CACHE_CONTROL_IMMUTABLE,
-      "Accept-Ranges": "bytes",
-    },
-  });
+  // Serve & Cache Full Segments / bytes=0- (200 OK) ──────────────────
+  // Tee the raw stream BEFORE wrapping it in a Response container to avoid stream locking crashes.
+  const [clientStream, cacheStream] = s3Object.stream.tee();
 
-  const [clientStream, cacheStream] = responseForCache.body!.tee();
-
-  // Only attempt cache write if we have a valid key
   if (cacheKey) {
+    // Save to edge cache strictly as a clean 200 OK without personalized/dynamic CORS headers
+    const responseForCache = new Response(cacheStream, {
+      status: 200,
+      headers: {
+        "Content-Type": getSegmentContentType(filename),
+        "Cache-Control": CACHE_CONTROL_IMMUTABLE,
+        "Accept-Ranges": "bytes",
+      },
+    });
+
     c.executionCtx.waitUntil(
       cache
-        .put(
-          cacheKey,
-          new Response(cacheStream, { headers: responseForCache.headers }),
-        )
+        .put(cacheKey, responseForCache)
         .catch((e) => console.warn("[get-file] Cache write failed:", e)),
     );
   } else {
-    // Drain unused stream branch to avoid memory leak
     c.executionCtx.waitUntil(cacheStream.cancel().catch(() => {}));
   }
 
   return new Response(clientStream, {
     status: 200,
     headers: {
-      ...Object.fromEntries(responseForCache.headers.entries()),
-      ...corsHeaders,
+      "Content-Type": getSegmentContentType(filename),
+      "Cache-Control": CACHE_CONTROL_IMMUTABLE,
       "X-Cache-Status": "MISS",
+      ...universalHeaders,
     },
   });
 });
 
 app.get("/search", zValidator("query", searchSchema), async (c) => {
-  const { q: query, limit, offset, sort, completeOnly, userId } =
-    c.req.valid("query");
+  const {
+    q: query,
+    limit,
+    offset,
+    sort,
+    completeOnly,
+    userId,
+  } = c.req.valid("query");
   const db = getDb(c.env.HYPERDRIVE.connectionString);
 
   // Try to get the current user from the session cookie (optional auth)
@@ -647,13 +692,19 @@ app.get("/search", zValidator("query", searchSchema), async (c) => {
     };
   });
 
-  return c.json({
-    results: mapped,
-    total,
-    query,
-    limit,
-    offset,
-  });
+  return c.json(
+    {
+      results: mapped,
+      total,
+      query,
+      limit,
+      offset,
+    },
+    200,
+    {
+      "Cache-Control": "private, no-store",
+    },
+  );
 });
 
 app.patch("/:id", authMiddleware, async (c) => {
@@ -676,17 +727,6 @@ app.patch("/:id", authMiddleware, async (c) => {
   // Only owner or admin can edit
   if (!isAdmin && book.userId !== userId) {
     return c.json({ error: "Forbidden — you don't own this book" }, 403);
-  }
-
-  // Public books can only be edited by admins or owners
-  if (book.visibility === "public" && !isAdmin && book.userId !== userId) {
-    return c.json(
-      {
-        error:
-          "Forbidden — public books can only be edited by admins or owners",
-      },
-      403,
-    );
   }
 
   const contentType = c.req.header("Content-Type") ?? "";
@@ -752,7 +792,7 @@ app.patch("/:id", authMiddleware, async (c) => {
       .returning({ id: audiobooks.id });
 
     // dont need to bust image cache since we hashed the image by content for the new url, but we do need to bust the info cache to update other metadata
-    await bustInfoCache(c, audiobookId);
+    await bustAllBookCaches(c, audiobookId);
     return c.json({ ok: true, book: updated });
   }
 
@@ -770,8 +810,10 @@ app.patch("/:id", authMiddleware, async (c) => {
       updatedAt: audiobooks.updatedAt,
     });
 
-  await bustInfoCache(c, audiobookId);
-  return c.json({ ok: true, book: updated });
+  await bustAllBookCaches(c, audiobookId);
+  return c.json({ ok: true, book: updated }, 200, {
+    "Cache-Control": "private, no-store",
+  });
 });
 
 const reuploadSchema = z
@@ -864,16 +906,23 @@ app.post(
       await db
         .update(audiobooks)
         .set({
-          status: "finished_upload",
+          status: "processing",
           rawFileName: generatedFileName,
           rawFileSizeBytes: textBytes.length,
           mimeType: "text/plain",
+          // reset processing stats
+          totalDurationSeconds: 0,
+          totalCharactersParsed: 0,
+          totalChunks: 0,
+          totalSegments: 0,
+          processedSegments: 0,
           errorMessage: null,
         })
         .where(eq(audiobooks.id, audiobookId));
 
-      // Replace asset row
-      // await db.delete(assets).where(eq(assets.audiobookId, audiobookId));
+      // Reset asset and segment
+      await db.delete(segments).where(eq(segments.audiobookId, audiobookId));
+      await db.delete(assets).where(eq(assets.audiobookId, audiobookId));
       await db.insert(assets).values({
         audiobookId,
         type: "raw_upload",
@@ -886,6 +935,12 @@ app.post(
       });
 
       await bucket.putObject(bucketName, textFileKey, text, "text/plain");
+
+      // delete old segments
+      await bucket.deleteFolder(
+        c.env.MEDIA_BUCKET_NAME,
+        `audiobooks/${audiobookId}/segments/`,
+      );
 
       await c.env.PARSER_QUEUE.send({
         audiobookId,
@@ -937,8 +992,9 @@ app.post(
       })
       .where(eq(audiobooks.id, audiobookId));
 
-    // Replace asset row so the uploadId is fresh
+    // Reset asset and segment
     await db.delete(assets).where(eq(assets.audiobookId, audiobookId));
+    await db.delete(segments).where(eq(segments.audiobookId, audiobookId));
     await db.insert(assets).values({
       audiobookId,
       type: "raw_upload",
@@ -952,22 +1008,134 @@ app.post(
       uploadExpiresAt,
     });
 
+    // delete old segments
+    await bucket.deleteFolder(
+      c.env.MEDIA_BUCKET_NAME,
+      `audiobooks/${audiobookId}/segments/`,
+    );
+
     console.log(
       `[re-upload] Initiated multipart for book ${audiobookId}, uploadId: ${uploadId}`,
     );
 
-    // ↓ Return the same shape as POST /upload so the client's
-    //   existing useMultipartUpload hook can hit /upload/get-presigned-urls unchanged
-    return c.json({
-      ok: true,
-      bookId: audiobookId,
-      status: "ready_to_upload",
-      strategy: "multipart",
-      uploadId,
-      fileKey: rawUploadKey,
-      expiresAt: uploadExpiresAt.toISOString(),
-    });
+    return c.json(
+      {
+        ok: true,
+        bookId: audiobookId,
+        status: "ready_to_upload",
+        strategy: "multipart",
+        uploadId,
+        fileKey: rawUploadKey,
+        expiresAt: uploadExpiresAt.toISOString(),
+      },
+      200,
+      {
+        "Cache-Control": "private, no-store",
+      },
+    );
   },
 );
+
+app.delete("/:id", authMiddleware, async (c) => {
+  const audiobookId = c.req.param("id");
+  const db = getDb(c.env.HYPERDRIVE.connectionString);
+  const { id: userId, role } = c.var.authSession.user;
+  const isAdmin = role === "admin";
+
+  const [book] = await db
+    .select({
+      id: audiobooks.id,
+      userId: audiobooks.userId,
+      coverBucketName: audiobooks.coverBucketName,
+      coverS3Key: audiobooks.coverS3Key,
+      status: audiobooks.status,
+    })
+    .from(audiobooks)
+    .where(eq(audiobooks.id, audiobookId));
+
+  if (!book) return c.json({ error: "Audiobook not found" }, 404);
+
+  if (!isAdmin && book.userId !== userId) {
+    return c.json({ error: "Forbidden — you don't own this book" }, 403);
+  }
+
+  if (book.status === "processing") {
+    return c.json(
+      { error: "Cannot delete while audiobook is being processed" },
+      409,
+    );
+  }
+
+  const store = storage.getInstance(c.env);
+
+  // ── Gather all assets tied to this book ───────────────────────────────
+  const bookAssets = await db
+    .select({
+      bucketName: assets.bucketName,
+      s3Key: assets.s3Key,
+      uploadId: assets.uploadId,
+      uploadStatus: assets.uploadStatus,
+    })
+    .from(assets)
+    .where(eq(assets.audiobookId, audiobookId));
+
+  // Abort any open multipart sessions first
+  for (const asset of bookAssets) {
+    if (
+      asset.uploadId &&
+      asset.uploadStatus === "pending_upload" &&
+      asset.s3Key &&
+      asset.bucketName
+    ) {
+      try {
+        await store.abortMultipartUpload(
+          asset.bucketName,
+          asset.s3Key,
+          asset.uploadId,
+        );
+      } catch (e: any) {
+        if (e?.$metadata?.httpStatusCode !== 404) {
+          console.warn(
+            `[delete] Could not abort multipart for ${asset.s3Key}:`,
+            e,
+          );
+        }
+      }
+    }
+  }
+
+  // ── Delete raw upload assets from storage
+  await Promise.allSettled([
+    store
+      .deleteFolder(
+        c.env.RAW_BUCKET_NAME,
+        `raw-uploads/${userId}/${audiobookId}/`,
+      )
+      .catch((e) => console.warn("[delete] RAW folder deletion failed:", e)),
+    store
+      .deleteFolder(c.env.MEDIA_BUCKET_NAME, `audiobooks/${audiobookId}/`)
+      .catch((e) =>
+        console.warn("[delete] Core media folder deletion failed:", e),
+      ),
+    store
+      .deleteFolder(c.env.PUBLIC_ASSETS_BUCKET_NAME, `covers/${audiobookId}/`)
+      .catch((e) => console.warn("[delete] Cover folder deletion failed:", e)),
+  ]);
+
+  // ── Bust info cache before DB delete ──────────────────────────────────
+  await bustAllBookCaches(c, audiobookId).catch((e) =>
+    console.warn("[delete] Cache bust failed:", e),
+  );
+
+  // ── Delete from DB (assets cascade via FK, or delete explicitly) ───────
+  await db.delete(assets).where(eq(assets.audiobookId, audiobookId));
+  await db.delete(audiobooks).where(eq(audiobooks.id, audiobookId));
+
+  console.log(`[delete] Audiobook ${audiobookId} deleted by user ${userId}`);
+
+  return c.json({ ok: true, deleted: audiobookId }, 200, {
+    "Cache-Control": "private, no-store",
+  });
+});
 
 export default app;

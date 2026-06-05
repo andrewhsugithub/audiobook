@@ -1,13 +1,13 @@
 /** Immutable media segments: 1 year, never changes once keyed by content hash */
-export const CACHE_CONTROL_IMMUTABLE = "public, max-age=31536000, immutable";
+export const CACHE_CONTROL_IMMUTABLE =
+  "public, max-age=31536000, s-maxage=31536000, immutable";
 
-/** Cover images: 30 days, serve stale for 1 day while revalidating */
+/** Cover images are content hash so cache for 1 year */
 export const CACHE_CONTROL_COVER =
-  "public, max-age=2592000, s-maxage=2592000, stale-while-revalidate=86400, stale-if-error=604800, immutable";
+  "public, max-age=31536000, s-maxage=31536000, immutable";
 
-/** HLS playlists: never cache — private, session-scoped */
-export const CACHE_CONTROL_PLAYLIST =
-  "private, no-store, no-cache, must-revalidate";
+/** HLS playlists: private, session-scoped */
+export const CACHE_CONTROL_PLAYLIST = "private, no-store";
 
 // ─── SWR dual-key TTLs (Workers Cache API emulation) ─────────────────────────
 // NOTE: stale-while-revalidate is NOT honoured by cache.put/cache.match in the

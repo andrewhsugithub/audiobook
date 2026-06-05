@@ -15,10 +15,36 @@ import { mountAuthRoutes } from "./middleware/auth";
 import { globalErrorHandler, notFoundHandler } from "./middleware/error";
 import type { Env } from "./types/env";
 import library from "./routes/library";
+import { secureHeaders } from "hono/secure-headers";
 
 const app = new Hono<Env>();
 
 app.use("*", corsMiddleware);
+
+// TODO: setup
+// app.use("*", async (c, next) => {
+//   const secureHeadersMiddleware = secureHeaders({
+//     // contentSecurityPolicy: {
+//     //   defaultSrc: ["'self'"],
+//     //   // ── ALLOW IMAGES ONLY FROM SELF + YOUR FE/STORAGE ORIGINS ──
+//     //   imgSrc: ["'self'", "data:", "blob:", ...TRUSTED_DOMAINS],
+
+//     //   // Ensure your frontend domain can connect to this API
+//     //   connectSrc: ["'self'", ...TRUSTED_DOMAINS],
+
+//     //   // Swagger UI script/style safety overrides
+//     //   scriptSrc: ["'self'", "'unsafe-inline'", "https://cdn.jsdelivr.net"],
+//     //   styleSrc: ["'self'", "'unsafe-inline'", "https://cdn.jsdelivr.net"],
+//     // },
+//     // ── RELAX CORP TO CROSS-ORIGIN ──
+//     // Note: CORP does not accept an array of domains. It supports 'same-origin',
+//     // 'same-site', or 'cross-origin'. To allow your frontend app to read
+//     // media/images from this worker, it MUST be set to "cross-origin".
+//     crossOriginResourcePolicy: "cross-origin",
+//   });
+
+//   return secureHeadersMiddleware(c, next);
+// });
 
 // ── Better Auth — handles /api/auth/* (sign-in, sign-up, session, etc.) ───────
 app.on(["GET", "POST"], "/api/auth/*", (c) =>

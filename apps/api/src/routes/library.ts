@@ -42,7 +42,7 @@ app.get("/", async (c) => {
       status: 304,
       headers: {
         ETag: eTagValue,
-        "Cache-Control": "no-cache, must-revalidate",
+        "Cache-Control": "private, no-cache, must-revalidate",
       },
     });
   }
@@ -80,8 +80,6 @@ app.get("/", async (c) => {
   });
 });
 
-//! add search endpoint for user's own books with optional query param to filter by title/author/id instead of fetching all and filtering client-side
-
 app.post("/:bookId", async (c) => {
   const db = getDb(c.env.HYPERDRIVE.connectionString);
   const { id: userId, role } = c.var.authSession.user;
@@ -112,7 +110,9 @@ app.post("/:bookId", async (c) => {
 
   // No manual eviction logic needed! The next GET request will pull the new row
   // count and modified timestamp, rendering old browser cache keys automatically outdated.
-  return c.json({ ok: true });
+  return c.json({ ok: true }, 200, {
+    "Cache-Control": "private, no-store",
+  });
 });
 
 app.delete("/:bookId", async (c) => {
@@ -129,7 +129,9 @@ app.delete("/:bookId", async (c) => {
       ),
     );
 
-  return c.json({ ok: true });
+  return c.json({ ok: true }, 200, {
+    "Cache-Control": "private, no-store",
+  });
 });
 
 app.get("/check/:bookId", async (c) => {
@@ -163,8 +165,9 @@ app.get("/check/:bookId", async (c) => {
   }
 
   return c.json({ saved: isSaved }, 200, {
-    "Cache-Control": "no-cache, must-revalidate",
+    "Cache-Control": "private, no-cache, must-revalidate",
     ETag: eTagValue,
   });
 });
+
 export default app;
