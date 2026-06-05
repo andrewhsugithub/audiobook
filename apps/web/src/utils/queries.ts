@@ -34,6 +34,7 @@ export interface AudiobookInfo {
   description: string
   ratings: number | null
   visibility: 'public' | 'private'
+  version: string
   isOwner: boolean
   coverUrl: string
   isReady: boolean
@@ -54,7 +55,7 @@ export interface UserProfile {
 
 async function searchAudiobooks(
   query: string,
-  limit = 50,
+  limit = 10,
   offset = 0,
   sort: SortKey = 'recent',
   completeOnly = false,
@@ -108,7 +109,7 @@ export const audiobookInfoQuery = (bookId: string) =>
     refetchInterval: (query) => {
       const status = query.state.data?.status
       if (status !== 'processing') return false
-      return 5000
+      return 30000 // 30s — if still processing, check for updates every minute
     },
   })
 

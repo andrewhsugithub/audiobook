@@ -78,9 +78,14 @@ export function UploadForm({ existingBookId, existingTitle }: Props) {
           existingBookId,
         })
 
-        await queryClient.invalidateQueries({
+        console.log('Upload successful, book ID:', bookId)
+
+        await queryClient.refetchQueries({
           queryKey: ['audiobook-info', bookId],
         })
+        // await queryClient.refetchQueries({
+        //   queryKey: ['hls-session', bookId],
+        // })
 
         toast.success('Upload complete — processing started.')
 
@@ -110,7 +115,11 @@ export function UploadForm({ existingBookId, existingTitle }: Props) {
           author: value.author,
           existingBookId,
         })
+        await queryClient.refetchQueries({
+          queryKey: ['audiobook-info', bookId],
+        })
         toast.success('Upload complete — processing started.')
+        addToLibrary.mutate(bookId)
         if (!isReupload) navigate({ to: '/books/$bookId', params: { bookId } })
       } catch (err) {
         toast.error(err instanceof Error ? err.message : 'Upload failed.')
