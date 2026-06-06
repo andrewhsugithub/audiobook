@@ -6,12 +6,18 @@ type Props = {
   title: string
   bookIds: string[]
   linkTo?: string
+  fetchNextPage?: () => void
+  hasNextPage?: boolean
+  isFetchingNextPage?: boolean
 }
 
 export default function BookCarousel({
   title,
   bookIds,
   linkTo = '/library',
+  fetchNextPage,
+  hasNextPage,
+  isFetchingNextPage,
 }: Props) {
   const scrollRef = useRef<HTMLUListElement>(null)
   const [canScrollLeft, setCanScrollLeft] = useState(false)
@@ -19,43 +25,43 @@ export default function BookCarousel({
 
   const updateScrollButtons = () => {
     const container = scrollRef.current
-
     if (!container) return
 
     const { scrollLeft, scrollWidth, clientWidth } = container
-
     setCanScrollLeft(scrollLeft > 0)
-
     setCanScrollRight(scrollLeft + clientWidth < scrollWidth - 5)
+
+    // Infinite scroll trigger: if within 200px of the right edge
+    if (scrollLeft + clientWidth >= scrollWidth - 200) {
+      if (hasNextPage && !isFetchingNextPage && fetchNextPage) {
+        fetchNextPage()
+      }
+    }
   }
 
   useEffect(() => {
     updateScrollButtons()
-
     const container = scrollRef.current
     if (!container) return
 
     container.addEventListener('scroll', updateScrollButtons)
     window.addEventListener('resize', updateScrollButtons)
-
     return () => {
       container.removeEventListener('scroll', updateScrollButtons)
       window.removeEventListener('resize', updateScrollButtons)
     }
-  }, [])
+  }, [bookIds.length, hasNextPage, isFetchingNextPage])
 
   const scroll = (direction: 'left' | 'right') => {
     const container = scrollRef.current
     if (!container) return
-
-    const scrollAmount = container.clientWidth * 0.8
-
     container.scrollBy({
-      left: direction === 'left' ? -scrollAmount : scrollAmount,
+      left:
+        direction === 'left'
+          ? -container.clientWidth * 0.8
+          : container.clientWidth * 0.8,
       behavior: 'smooth',
     })
-    // The container's 'scroll' listener (see useEffect) keeps the button
-    // enabled/disabled state in sync as the smooth scroll progresses.
   }
 
   const arrowClass = (disabled: boolean) =>
@@ -65,10 +71,8 @@ export default function BookCarousel({
 
   return (
     <div className="mt-14">
-      {/* Header */}
       <div className="mb-6 flex items-center justify-between">
         <h2 className="display-title text-3xl font-bold">{title}</h2>
-
         <div className="flex gap-3">
           <button
             type="button"
@@ -79,43 +83,51 @@ export default function BookCarousel({
           >
             <span aria-hidden="true">‹</span>
           </button>
-
           <button
             type="button"
             onClick={() => scroll('right')}
-            disabled={!canScrollRight}
+            disabled={!canScrollRight && !hasNextPage}
             aria-label={`Scroll ${title} right`}
-            className={arrowClass(!canScrollRight)}
+            className={arrowClass(!canScrollRight && !hasNextPage)}
           >
             <span aria-hidden="true">›</span>
           </button>
-
           <Link to={linkTo} search={{ title }} className="nav-link">
             View All
           </Link>
         </div>
       </div>
 
-      {/* Carousel */}
       <ul
         ref={scrollRef}
         role="region"
         aria-label={`${title} audiobooks`}
         className="flex gap-15 overflow-x-auto px-6 pb-6 pt-2 scroll-smooth no-scrollbar list-none"
       >
-        <>
-          {bookIds.map((bookId) => (
-            <BookCard
-              key={bookId}
-              bookId={bookId}
-              libraryTitle={title || 'Library'}
-              variant="carousel"
-            />
+        {bookIds.map((bookId) => (
+          <BookCard
+            key={bookId}
+            bookId={bookId}
+            libraryTitle={title || 'Library'}
+            variant="carousel"
+          />
+        ))}
+
+        {isFetchingNextPage &&
+          Array.from({ length: 3 }).map((_, i) => (
+            <li
+              key={`skeleton-${i}`}
+              className="w-[160px] shrink-0 animate-pulse"
+            >
+              <div className="aspect-[2/3] w-full rounded bg-[var(--line)]" />
+              <div className="mt-3 h-4 w-3/4 rounded bg-[var(--line)]" />
+              <div className="mt-2 h-3 w-1/2 rounded bg-[var(--line)]" />
+            </li>
           ))}
-          {bookIds.length === 0 && (
-            <p className="text-sm opacity-50">No books available.</p>
-          )}
-        </>
+
+        {bookIds.length === 0 && !isFetchingNextPage && (
+          <p className="text-sm opacity-50">No books available.</p>
+        )}
       </ul>
     </div>
   )
