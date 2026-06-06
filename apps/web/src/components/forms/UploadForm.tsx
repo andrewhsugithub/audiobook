@@ -38,12 +38,25 @@ function validateFile(file: File): string | null {
   return null
 }
 
+function refetchQueries(bookId: string) {
+  const sanitizedId = String(bookId).trim() // Ensure no hidden string layout pollution
+
+  return Promise.all([
+    queryClient.invalidateQueries({
+      queryKey: ['audiobook-info', sanitizedId],
+      exact: true,
+      type: 'all',
+    }),
+  ])
+}
+
 interface Props {
   existingBookId?: string
   existingTitle?: string
+  onClose?: () => void
 }
 
-export function UploadForm({ existingBookId, existingTitle }: Props) {
+export function UploadForm({ existingBookId, existingTitle, onClose }: Props) {
   const navigate = useNavigate()
   const toast = useToast()
   const { userId } = useAuth()
@@ -80,17 +93,13 @@ export function UploadForm({ existingBookId, existingTitle }: Props) {
 
         console.log('Upload successful, book ID:', bookId)
 
-        await queryClient.refetchQueries({
-          queryKey: ['audiobook-info', bookId],
-        })
-        // await queryClient.refetchQueries({
-        //   queryKey: ['hls-session', bookId],
-        // })
+        await refetchQueries(bookId)
 
         toast.success('Upload complete — processing started.')
 
         addToLibrary.mutate(bookId)
         if (!isReupload) navigate({ to: '/books/$bookId', params: { bookId } })
+        else onClose?.()
       } catch (err) {
         toast.error(err instanceof Error ? err.message : 'Upload failed.')
       }
@@ -115,12 +124,13 @@ export function UploadForm({ existingBookId, existingTitle }: Props) {
           author: value.author,
           existingBookId,
         })
-        await queryClient.refetchQueries({
-          queryKey: ['audiobook-info', bookId],
-        })
+
+        await refetchQueries(bookId)
+
         toast.success('Upload complete — processing started.')
         addToLibrary.mutate(bookId)
         if (!isReupload) navigate({ to: '/books/$bookId', params: { bookId } })
+        else onClose?.()
       } catch (err) {
         toast.error(err instanceof Error ? err.message : 'Upload failed.')
       }

@@ -45,6 +45,8 @@ function BookComponent() {
   const [coverFile, setCoverFile] = useState<File | null>(null)
   const [coverPreview, setCoverPreview] = useState<string | null>(null)
 
+  const [isExpanded, setIsExpanded] = useState(false)
+
   const {
     data: book,
     isLoading: isInfoLoading,
@@ -222,6 +224,7 @@ function BookComponent() {
                   <UploadForm
                     existingBookId={book.id}
                     existingTitle={book.title}
+                    onClose={() => setIsEditing(false)}
                   />
                 </div>
               )}
@@ -311,27 +314,86 @@ function BookComponent() {
               </span>
 
               {/* ── Library Sync Interactive Actions Area ──────────────── */}
-              <div className="mt-8 flex gap-3 h-12 items-center">
+              <div className="mt-8 flex items-center gap-4 w-full min-h-12">
                 {isInfoLoading ? (
-                  <div className="h-12 w-12 rounded-full animate-pulse bg-[var(--line)]" />
+                  <div className="h-12 w-12 rounded-full animate-pulse bg-[var(--line)] shrink-0" />
                 ) : isLoggedIn ? (
-                  <BookmarkButton
-                    isInLibrary={isInLibrary}
-                    onClick={handleBookmarkToggle}
-                  />
-                ) : (
-                  <Link to="/sign-in" className="btn btn-primary">
-                    Sign In to Save
-                  </Link>
-                )}
+                  <>
+                    {/* Left Column: Bookmark Action (Prevented from shrinking) */}
+                    <div className="flex items-center gap-3 shrink-0">
+                      <BookmarkButton
+                        isInLibrary={isInLibrary}
+                        onClick={handleBookmarkToggle}
+                      />
 
-                {/* Visual Mutation Progress Indicator
-                {(addToLibrary.isPending || removeFromLibrary.isPending) && (
+                      {/* Visual Mutation Progress Indicator */}
+                      {(addToLibrary.isPending ||
+                        removeFromLibrary.isPending) && (
+                        <span className="text-xs text-[var(--sea-ink-soft)] animate-pulse font-medium whitespace-nowrap">
+                          Syncing library…
+                        </span>
+                      )}
+                    </div>
+
+                    {/* Right Column: Player & Status Messaging Matrix (Stretches to fill line) */}
+                    <div className="flex-1 min-w-0 flex flex-col justify-center">
+                      {book?.isReady === false &&
+                        (book.status === 'initiated' ? (
+                          <div className="text-sm text-error p-3 bg-red-500/10 rounded-lg border border-red-500/20">
+                            ❌ No content available. Please provide track
+                            text/file.
+                          </div>
+                        ) : book.status === 'failed' ? (
+                          <div className="text-sm text-error p-3 bg-red-500/10 rounded-lg border border-red-500/20">
+                            ❌ Processing failed.{' '}
+                            {book.errorMessage
+                              ? `Error: ${book.errorMessage}`
+                              : 'Please try re-uploading.'}
+                          </div>
+                        ) : (
+                          <div className="text-sm text-warning p-3 bg-yellow-500/10 rounded-lg border border-yellow-500/20">
+                            ⚠️ Audiobook is still processing. Check back later!
+                          </div>
+                        ))}
+
+                      {(isInfoLoading || isStreamLoading) &&
+                        book?.isReady === true && (
+                          <div className="text-sm text-[var(--sea-ink-soft)] opacity-80 animate-pulse flex items-center gap-2 py-2">
+                            <span>🔒</span> Establishing secure audio stream
+                            connection…
+                          </div>
+                        )}
+
+                      {isStreamError && (
+                        <div className="text-sm text-error p-3 bg-red-500/10 rounded-lg border border-red-500/20">
+                          ⚠️ Secure Stream Error: {streamError.message}
+                        </div>
+                      )}
+
+                      {isStreamReady && book?.version && (
+                        <div className="w-full">
+                          <HlsAudioPlayer
+                            src={`${BASE_URL}/audiobook/${bookId}/${book.version}/master.m3u8`}
+                            title={book?.title}
+                          />
+                        </div>
+                      )}
+                    </div>
+                  </>
+                ) : (
+                  <div className="flex items-center h-12">
+                    <Link to="/sign-in" className="btn btn-primary">
+                      Sign In to Listen and Save to Library
+                    </Link>
+                  </div>
+                )}
+              </div>
+              {/* Visual Mutation Progress Indicator */}
+              {/* {(addToLibrary.isPending || removeFromLibrary.isPending) && (
                   <span className="text-xs text-white/40 animate-pulse font-medium">
                     Syncing library…
                   </span>
                 )} */}
-              </div>
 
               {/* Description */}
               <div className="mt-10 max-w-3xl leading-8 text-[var(--sea-ink-soft)]">
@@ -341,55 +403,24 @@ function BookComponent() {
                     <div className="h-4 bg-[var(--line)] rounded w-5/6" />
                     <div className="h-4 bg-[var(--line)] rounded w-4/6" />
                   </div>
+                ) : !book?.description ? (
+                  <i>No description available for this book.</i>
                 ) : (
-                  book?.description || (
-                    <i>No description available for this book.</i>
-                  )
-                )}
-              </div>
+                  <div>
+                    <p className={isExpanded ? 'block' : 'line-clamp-3'}>
+                      {book.description}
+                    </p>
 
-              {/* Stream / Player */}
-              <div className="mt-6 min-h-[60px] flex flex-col justify-center">
-                {book?.isReady === false &&
-                  (book.status === 'initiated' ? (
-                    <div className="text-sm text-error p-3 bg-red-500/10 rounded-lg border border-red-500/20">
-                      ❌ No content is currently available for this audiobook.
-                      <br />
-                      Please provide content to process.
-                    </div>
-                  ) : book.status === 'failed' ? (
-                    <div className="text-sm text-error p-3 bg-red-500/10 rounded-lg border border-red-500/20">
-                      ❌ This audiobook failed to process.{' '}
-                      {book.errorMessage
-                        ? `Error: ${book.errorMessage}`
-                        : 'Please try re-uploading the content.'}
-                    </div>
-                  ) : (
-                    <div className="text-sm text-warning p-3 bg-yellow-500/10 rounded-lg border border-yellow-500/20">
-                      ⚠️ This audiobook is still being processed. Check back
-                      later!
-                    </div>
-                  ))}
-
-                {(isInfoLoading || isStreamLoading) &&
-                  book?.isReady === true && (
-                    <div className="text-sm opacity-60 animate-pulse flex items-center gap-2">
-                      <span>🔒</span> Establishing secure audio stream
-                      connection…
-                    </div>
-                  )}
-
-                {isStreamError && (
-                  <div className="text-sm text-error p-3 bg-red-500/10 rounded-lg border border-red-500/20">
-                    ⚠️ Secure Stream Error: {streamError.message}
+                    {book.description.length > 200 && (
+                      <button
+                        type="button"
+                        onClick={() => setIsExpanded(!isExpanded)}
+                        className="mt-2 text-sm font-semibold text-[var(--lagoon-deep)] hover:text-[var(--lagoon)] transition-colors focus:outline-none block"
+                      >
+                        {isExpanded ? 'Show less' : 'Read more'}
+                      </button>
+                    )}
                   </div>
-                )}
-
-                {isStreamReady && book?.version && (
-                  <HlsAudioPlayer
-                    src={`${BASE_URL}/audiobook/${bookId}/${book.version}/master.m3u8`}
-                    title={book?.title}
-                  />
                 )}
               </div>
             </>
