@@ -1,57 +1,63 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { API_BASE_URL as BASE_URL } from '../utils/api'
+import type { SortKey, AudiobookSummary } from '../utils/queries'
 
-export interface LibraryBook {
-  id: string
-  title: string
-  author: string | null
-  description: string | null
-  ratings: number | null
-  coverUrl: string
-  status: string
-  visibility: 'public' | 'private'
-  savedAt: string
+type VisibilityFilter = 'all' | 'public' | 'private'
+type ScopeFilter = 'saved' | 'uploaded'
+
+export interface UseLibrarySearchOpts {
+  q: string
+  limit: number
+  offset: number
+  sort: SortKey
+  visibility: VisibilityFilter
+  scope: ScopeFilter
+  enabled: boolean
 }
 
-async function fetchLibrary(): Promise<{ results: LibraryBook[] }> {
-  const res = await fetch(`${BASE_URL}/library`, { credentials: 'include' })
-  if (!res.ok) throw new Error('Failed to fetch library')
-  return res.json()
+interface LibrarySearchResult {
+  results: AudiobookSummary[]
+  total: number
 }
 
-async function saveToLibrary(bookId: string): Promise<void> {
-  const res = await fetch(`${BASE_URL}/library/${bookId}`, {
-    method: 'POST',
-    credentials: 'include',
+export function useLibrarySearch(opts: UseLibrarySearchOpts) {
+  const { q, limit, offset, sort, visibility, scope, enabled } = opts
+
+  return useQuery<LibrarySearchResult>({
+    queryKey: ['library-search', scope, q, limit, offset, sort, visibility],
+    queryFn: async () => {
+      const params = new URLSearchParams({
+        q,
+        limit: String(limit),
+        offset: String(offset),
+        sort,
+        visibility,
+        scope,
+      })
+      const res = await fetch(`${BASE_URL}/library?${params.toString()}`, {
+        credentials: 'include',
+      })
+      if (!res.ok) throw new Error('Library fetch failed')
+      return res.json()
+    },
+    enabled,
+    placeholderData: (prev) => prev,
+    staleTime: 30_000,
   })
-  if (!res.ok) {
-    const body = await res.json().catch(() => ({}))
-    throw new Error(body.error ?? 'Failed to save book')
-  }
-}
-
-async function removeFromLibrary(bookId: string): Promise<void> {
-  const res = await fetch(`${BASE_URL}/library/${bookId}`, {
-    method: 'DELETE',
-    credentials: 'include',
-  })
-  if (!res.ok) throw new Error('Failed to remove book')
-}
-
-async function checkInLibrary(bookId: string): Promise<boolean> {
-  const res = await fetch(`${BASE_URL}/library/check/${bookId}`, {
-    credentials: 'include',
-  })
-  if (!res.ok) return false
-  const data = await res.json()
-  return data.saved
 }
 
 export function useLibrary(isLoggedIn: boolean) {
   return useQuery({
     queryKey: ['user-library'],
-    queryFn: fetchLibrary,
-    staleTime: 1000 * 60 * 15, // 15m — library contents don't change often
+    queryFn: async () => {
+      const res = await fetch(
+        `${BASE_URL}/library?limit=50&offset=0&scope=saved`,
+        { credentials: 'include' },
+      )
+      if (!res.ok) throw new Error('Failed to fetch library')
+      return res.json()
+    },
+    staleTime: 1000 * 60 * 15,
     enabled: isLoggedIn,
   })
 }
@@ -59,7 +65,14 @@ export function useLibrary(isLoggedIn: boolean) {
 export function useIsInLibrary(bookId: string, enabled = true) {
   return useQuery({
     queryKey: ['library-check', bookId],
-    queryFn: () => checkInLibrary(bookId),
+    queryFn: async () => {
+      const res = await fetch(`${BASE_URL}/library/check/${bookId}`, {
+        credentials: 'include',
+      })
+      if (!res.ok) return false
+      const data = await res.json()
+      return data.saved
+    },
     enabled,
     staleTime: 1000 * 60 * 5,
   })
@@ -68,9 +81,16 @@ export function useIsInLibrary(bookId: string, enabled = true) {
 export function useAddToLibrary() {
   const queryClient = useQueryClient()
   return useMutation({
-    mutationFn: saveToLibrary,
+    mutationFn: async (bookId: string) => {
+      const res = await fetch(`${BASE_URL}/library/${bookId}`, {
+        method: 'POST',
+        credentials: 'include',
+      })
+      if (!res.ok) throw new Error('Failed to save book')
+    },
     onSuccess: (_, bookId) => {
       queryClient.invalidateQueries({ queryKey: ['user-library'] })
+      queryClient.invalidateQueries({ queryKey: ['library-search'] })
       queryClient.invalidateQueries({ queryKey: ['library-check', bookId] })
     },
   })
@@ -79,9 +99,16 @@ export function useAddToLibrary() {
 export function useRemoveFromLibrary() {
   const queryClient = useQueryClient()
   return useMutation({
-    mutationFn: removeFromLibrary,
+    mutationFn: async (bookId: string) => {
+      const res = await fetch(`${BASE_URL}/library/${bookId}`, {
+        method: 'DELETE',
+        credentials: 'include',
+      })
+      if (!res.ok) throw new Error('Failed to remove book')
+    },
     onSuccess: (_, bookId) => {
       queryClient.invalidateQueries({ queryKey: ['user-library'] })
+      queryClient.invalidateQueries({ queryKey: ['library-search'] })
       queryClient.invalidateQueries({ queryKey: ['library-check', bookId] })
     },
   })
