@@ -4,11 +4,13 @@ import { API_BASE_URL as API_URL } from './api'
 export interface AudiobookSummary {
   id: string
   title: string
-  author: string
-  description: string
+  author: string | null
+  description: string | null
   ratings: number | null
   coverUrl: string
   status: string
+  visibility: 'public' | 'private'
+  isOwner: boolean
 }
 
 export interface SearchResponse {
@@ -53,27 +55,14 @@ export interface UserProfile {
   image: string | null
 }
 
-async function searchAudiobooks(
-  query: string,
-  limit = 10,
-  offset = 0,
-  sort: SortKey = 'recent',
-  completeOnly = false,
-  userId?: string,
-): Promise<SearchResponse> {
-  const params = new URLSearchParams({
-    q: query,
-    limit: String(limit),
-    offset: String(offset),
-    sort,
-    completeOnly: String(completeOnly),
-  })
-  if (userId) params.set('userId', userId)
-  const res = await fetch(`${API_URL}/audiobook/search?${params}`, {
-    credentials: 'include',
-  })
-  if (!res.ok) throw new Error(`Search failed: ${res.status}`)
-  return res.json()
+export interface SearchQueryOptions {
+  q?: string
+  limit?: number
+  offset?: number
+  sort?: SortKey
+  completeOnly?: boolean
+  userId?: string
+  uploadedByMe?: boolean
 }
 
 async function fetchAudiobookInfo(bookId: string): Promise<AudiobookInfo> {
@@ -87,19 +76,71 @@ async function fetchAudiobookInfo(bookId: string): Promise<AudiobookInfo> {
   return res.json()
 }
 
-export const searchQuery = (
-  query: string,
-  limit = 50,
-  offset = 0,
-  sort: SortKey = 'recent',
-  userId?: string,
-) =>
-  queryOptions({
-    queryKey: ['audiobook-search', query, limit, offset, sort, userId ?? null],
-    queryFn: () => searchAudiobooks(query, limit, offset, sort, false, userId),
-    staleTime: 1000 * 30, // 30s — search results can change
-    placeholderData: (prev) => prev, // keep previous page visible while fetching
-  })
+export function searchQuery(opts: SearchQueryOptions | string, limit = 10) {
+  const normalized: SearchQueryOptions =
+    typeof opts === 'string' ? { q: opts, limit } : opts
+
+  const {
+    q = '',
+    limit: lim = 10,
+    offset = 0,
+    sort = 'recent',
+    completeOnly = false,
+    userId,
+    uploadedByMe = false,
+  } = normalized
+
+  const params = new URLSearchParams()
+  if (q) params.set('q', q)
+  params.set('limit', String(lim))
+  params.set('offset', String(offset))
+  params.set('sort', sort)
+
+  if (completeOnly) params.set('completeOnly', 'true')
+  if (uploadedByMe) params.set('uploadedByMe', 'true')
+
+  if (userId && userId !== 'undefined') {
+    params.set('userId', userId)
+  }
+
+  return {
+    queryKey: [
+      'audiobook-search',
+      q,
+      lim,
+      offset,
+      sort,
+      completeOnly,
+      userId,
+      uploadedByMe,
+    ],
+    queryFn: async (): Promise<SearchResponse> => {
+      const res = await fetch(
+        `${API_URL}/audiobook/search?${params.toString()}`,
+        {
+          credentials: 'include',
+        },
+      )
+
+      if (!res.ok) {
+        throw new Error(
+          `Server returned status code ${res.status} on search lookup matrix.`,
+        )
+      }
+
+      const contentType = res.headers.get('content-type')
+      if (!contentType || !contentType.includes('application/json')) {
+        throw new Error(
+          'Received non-JSON content wrapper from storage backend query gateway.',
+        )
+      }
+
+      return res.json()
+    },
+    staleTime: 1000 * 15,
+    placeholderData: (prev: any) => prev,
+  }
+}
 
 export const audiobookInfoQuery = (bookId: string) =>
   queryOptions({
@@ -109,7 +150,10 @@ export const audiobookInfoQuery = (bookId: string) =>
     refetchInterval: (query) => {
       const status = query.state.data?.status
       if (status !== 'processing') return false
-      return 30000 // 30s — if still processing, check for updates every minute
+      console.log(
+        `Audiobook ${bookId} is processing, setting refetch interval to check for updates.`,
+      )
+      return 5000 // 30s — if still processing, check for updates every minute
     },
   })
 
