@@ -86,12 +86,38 @@ export function useAddToLibrary() {
         method: 'POST',
         credentials: 'include',
       })
-      if (!res.ok) throw new Error('Failed to save book')
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}))
+        throw new Error(body.error ?? 'Failed to save book')
+      }
     },
-    onSuccess: (_, bookId) => {
+    // Fire before the request — update the cache instantly
+    onMutate: async (bookId) => {
+      // Cancel any in-flight refetches so they don't overwrite our optimistic value
+      await queryClient.cancelQueries({ queryKey: ['library-check', bookId] })
+
+      // Snapshot the current value so we can roll back on error
+      const previous = queryClient.getQueryData<boolean>([
+        'library-check',
+        bookId,
+      ])
+
+      // Optimistically set to true immediately
+      queryClient.setQueryData(['library-check', bookId], true)
+
+      return { previous, bookId }
+    },
+    onError: (_err, bookId, context) => {
+      // Roll back to the snapshot on failure
+      if (context?.previous !== undefined) {
+        queryClient.setQueryData(['library-check', bookId], context.previous)
+      }
+    },
+    onSettled: (_, __, bookId) => {
+      // Always sync with server truth after success or failure
+      queryClient.invalidateQueries({ queryKey: ['library-check', bookId] })
       queryClient.invalidateQueries({ queryKey: ['user-library'] })
       queryClient.invalidateQueries({ queryKey: ['library-search'] })
-      queryClient.invalidateQueries({ queryKey: ['library-check', bookId] })
     },
   })
 }
@@ -106,10 +132,28 @@ export function useRemoveFromLibrary() {
       })
       if (!res.ok) throw new Error('Failed to remove book')
     },
-    onSuccess: (_, bookId) => {
+    onMutate: async (bookId) => {
+      await queryClient.cancelQueries({ queryKey: ['library-check', bookId] })
+
+      const previous = queryClient.getQueryData<boolean>([
+        'library-check',
+        bookId,
+      ])
+
+      // Optimistically set to false immediately
+      queryClient.setQueryData(['library-check', bookId], false)
+
+      return { previous, bookId }
+    },
+    onError: (_err, bookId, context) => {
+      if (context?.previous !== undefined) {
+        queryClient.setQueryData(['library-check', bookId], context.previous)
+      }
+    },
+    onSettled: (_, __, bookId) => {
+      queryClient.invalidateQueries({ queryKey: ['library-check', bookId] })
       queryClient.invalidateQueries({ queryKey: ['user-library'] })
       queryClient.invalidateQueries({ queryKey: ['library-search'] })
-      queryClient.invalidateQueries({ queryKey: ['library-check', bookId] })
     },
   })
 }

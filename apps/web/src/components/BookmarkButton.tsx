@@ -3,13 +3,11 @@ import { Bookmark } from 'lucide-react'
 interface BookmarkButtonProps {
   isInLibrary: boolean
   onClick: () => void
-  disabled: boolean
 }
 
 export default function BookmarkButton({
   isInLibrary,
   onClick,
-  disabled,
 }: BookmarkButtonProps) {
   return (
     <div className="group relative inline-block">
@@ -18,8 +16,7 @@ export default function BookmarkButton({
         onClick={onClick}
         aria-label={isInLibrary ? 'Remove from Library' : 'Add to Library'}
         aria-pressed={isInLibrary}
-        className="btn btn-circle btn-lg btn-soft disabled:cursor-not-allowed disabled:opacity-50"
-        disabled={disabled}
+        className="btn btn-circle btn-lg btn-soft"
       >
         <Bookmark
           className={`
@@ -29,7 +26,7 @@ export default function BookmarkButton({
         />
       </button>
 
-      {/* <div
+      <div
         className="
           absolute top-full left-1/2 mt-2 -translate-x-1/2
           whitespace-nowrap
@@ -49,7 +46,7 @@ export default function BookmarkButton({
         "
       >
         {isInLibrary ? 'Remove from Library' : 'Add to Library'}
-      </div> */}
+      </div>
     </div>
   )
 }

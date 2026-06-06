@@ -324,18 +324,7 @@ function BookComponent() {
                       <BookmarkButton
                         isInLibrary={isInLibrary}
                         onClick={handleBookmarkToggle}
-                        disabled={
-                          addToLibrary.isPending || removeFromLibrary.isPending
-                        }
                       />
-
-                      {/* Visual Mutation Progress Indicator */}
-                      {(addToLibrary.isPending ||
-                        removeFromLibrary.isPending) && (
-                        <span className="absolute top-full left-0 mt-2 -translate-x-1/6 text-xs text-[var(--sea-ink-soft)] animate-pulse font-medium whitespace-nowrap">
-                          Syncing library…
-                        </span>
-                      )}
                     </div>
 
                     {/* Right Column: Player & Status Messaging Matrix (Stretches to fill line) */}
