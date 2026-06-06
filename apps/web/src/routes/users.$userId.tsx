@@ -6,8 +6,9 @@ import BookCard from '../components/BookCard'
 import Header from '../components/Header'
 import SortSelect from '../components/SortSelect'
 import Pagination from '../components/Pagination'
-import { searchQuery, userProfileQuery } from '../utils/queries'
+import { userProfileQuery } from '../utils/queries'
 import type { SortKey } from '../utils/queries'
+import { useSearch } from '../hooks/useSearch'
 
 const DEFAULT_PAGE_SIZE = 10
 const PAGE_SIZE_OPTIONS = [10, 20, 50]
@@ -42,7 +43,13 @@ function UserBooksPage() {
     data: searchData,
     isLoading,
     isFetching,
-  } = useQuery(searchQuery('', pageSize, offset, sort, userId))
+  } = useSearch({
+    q: '',
+    limit: pageSize,
+    offset,
+    sort,
+    userId,
+  })
 
   const books = searchData?.results ?? []
   const total = searchData?.total ?? 0
@@ -57,7 +64,10 @@ function UserBooksPage() {
 
   return (
     <div className="min-w-[360px] pb-20">
-      <Header title={profile?.name ?? passedName ?? 'Uploads'} backTo="/library" />
+      <Header
+        title={profile?.name ?? passedName ?? 'Uploads'}
+        backTo="/library"
+      />
 
       <main className="mx-auto max-w-7xl p-4 content-start">
         {/* Profile banner */}
@@ -104,7 +114,11 @@ function UserBooksPage() {
           }}
         >
           {books.map((book) => (
-            <BookCard key={book.id} bookId={book.id} libraryTitle={displayName} />
+            <BookCard
+              key={book.id}
+              bookId={book.id}
+              libraryTitle={displayName}
+            />
           ))}
 
           {isLoading &&
@@ -116,7 +130,7 @@ function UserBooksPage() {
             ))}
         </ul>
 
-        {!isEmpty && total > PAGE_SIZE_OPTIONS[0] && (
+        {!isEmpty && (
           <Pagination
             page={page}
             totalPages={totalPages}

@@ -14,10 +14,14 @@ const DEFAULT_PAGE_SIZE = 10
 
 export const Route = createFileRoute('/library')({
   head: () => ({ meta: [{ title: 'Library · Audiobook' }] }),
-  // Prefetch the first page (empty query = recent books) when the route loads
   loader: async ({ context }) => {
     await context.queryClient.ensureQueryData(
-      searchQuery('', DEFAULT_PAGE_SIZE),
+      searchQuery({
+        q: '',
+        limit: DEFAULT_PAGE_SIZE,
+        offset: 0,
+        sort: 'recent',
+      }),
     )
   },
   component: Library,
@@ -33,24 +37,28 @@ function Library() {
   const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE)
   const [page, setPage] = useState(1)
 
-  // Start over from page 1 whenever the query, sort, or page size changes.
   useEffect(() => {
     setPage(1)
   }, [searchInput, sort, pageSize])
 
   const offset = (page - 1) * pageSize
+
   const {
     data: searchData,
     isLoading,
     isStale,
     isFetching,
-  } = useSearch(searchInput, pageSize, offset, sort)
+  } = useSearch({
+    q: searchInput,
+    limit: pageSize,
+    offset,
+    sort,
+  })
 
   const books = searchData?.results ?? []
   const total = searchData?.total ?? 0
   const totalPages = Math.max(1, Math.ceil(total / pageSize))
 
-  // If the result set shrank under us (e.g. a narrower search), clamp the page.
   useEffect(() => {
     if (!isLoading && page > totalPages) setPage(totalPages)
   }, [isLoading, page, totalPages])
@@ -64,23 +72,16 @@ function Library() {
     const update = () => {
       const container = gridRef.current
       if (!container) return
-
       const width = container.clientWidth
       const totalWidth =
         books.length * MAX_CARD + Math.max(0, books.length - 1) * GAP
-
       setIsMultiRow(totalWidth > width)
     }
-
     update()
     window.addEventListener('resize', update)
-
-    return () => {
-      window.removeEventListener('resize', update)
-    }
+    return () => window.removeEventListener('resize', update)
   }, [books.length])
 
-  // Range label like "1–10 of 42"
   const rangeStart = total === 0 ? 0 : offset + 1
   const rangeEnd = Math.min(offset + books.length, total)
 
@@ -97,7 +98,6 @@ function Library() {
       />
 
       <main className="mx-auto max-w-7xl p-4 content-start">
-        {/* Toolbar: result summary + sort */}
         <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
           <p className="min-h-5 text-sm text-[var(--sea-ink-soft)]">
             {isLoading ? (
@@ -113,20 +113,16 @@ function Library() {
               </>
             )}
           </p>
-
           <SortSelect value={sort} onChange={setSort} />
         </div>
 
-        {isEmpty &&
-          (searchInput ? (
-            <p className="py-16 text-center text-sm text-[var(--sea-ink-soft)]">
-              No results for &ldquo;{searchInput}&rdquo;.
-            </p>
-          ) : (
-            <p className="py-16 text-center text-sm text-[var(--sea-ink-soft)]">
-              No audiobooks yet. Upload one to get started.
-            </p>
-          ))}
+        {isEmpty && (
+          <p className="py-16 text-center text-sm text-[var(--sea-ink-soft)]">
+            {searchInput
+              ? `No results for "${searchInput}".`
+              : 'No audiobooks yet. Upload one to get started.'}
+          </p>
+        )}
 
         <section className="col-span-full">
           <ul
@@ -156,9 +152,7 @@ function Library() {
               ))}
           </ul>
 
-          {/* Show the pagination bar (incl. the per-page selector) whenever
-              there are more books than the smallest page size could fit. */}
-          {!isEmpty && total > PAGE_SIZE_OPTIONS[0] && (
+          {!isEmpty && (
             <Pagination
               page={page}
               totalPages={totalPages}
