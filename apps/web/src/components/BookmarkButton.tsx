@@ -10,7 +10,7 @@ export default function BookmarkButton({
   onClick,
 }: BookmarkButtonProps) {
   return (
-    <div className="group relative">
+    <div className="group relative inline-block">
       <button
         type="button"
         onClick={onClick}
@@ -28,7 +28,7 @@ export default function BookmarkButton({
 
       <div
         className="
-          absolute left-full ml-2 top-1/2 -translate-y-1/2
+          absolute top-full left-1/2 mt-2 -translate-x-1/2
           whitespace-nowrap
           rounded-lg
           border border-[var(--chip-line)]
@@ -42,6 +42,7 @@ export default function BookmarkButton({
           group-hover:opacity-100
           transition-all duration-200
           pointer-events-none
+          z-20
         "
       >
         {isInLibrary ? 'Remove from Library' : 'Add to Library'}
