@@ -68,12 +68,11 @@ function BookComponent() {
 
   // ── Dynamic Permissions Configuration ──────────────────────────────
   // - Admin: can modify anything anywhere
-  // - Owner: can modify only if the audiobook is flagged as private
+  // - Owner: can modify their own books, but not others
   const canEdit =
     isLoggedIn &&
     book != null &&
-    (user?.role === 'admin' ||
-      (book.isOwner === true && book.visibility === 'private'))
+    (user?.role === 'admin' || book.isOwner === true)
 
   // Clean up object URLs to prevent memory leaks
   useEffect(() => {
