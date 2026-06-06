@@ -6,7 +6,7 @@ import { assets } from "@audiobook/db/src/schema/schema";
 import type { LLMTagJobData, ChunkingJobData } from "../types/jobs";
 
 // set maybe smaller to leave room for system prompt and ouput tokens
-const MAX_CHUNK_LENGTH = 2048;
+const MAX_CHUNK_LENGTH = 300;
 
 function estimateTokens(text: string): number {
   // Split by whitespace to count words roughly
@@ -102,7 +102,7 @@ export async function handleChunkingQueue(
       const fullText = await storageObject.transformToString();
 
       // Split the document using the semantic token-based chunking
-      const chunks = chunkTextSemantic(fullText, 2000); // 2000 tokens limit per chunk
+      const chunks = chunkTextSemantic(fullText, MAX_CHUNK_LENGTH);
       console.log(
         `[chunking-queue] Split into ${chunks.length} semantic chunks.`,
       );
