@@ -144,14 +144,14 @@ function BookComponent() {
         backSearch={{ title: title || 'Library' }}
       />
 
-      {/* ── Admin / Owner Toolbar ────────────────────────────────────── */}
-      {isLoggedIn && canEdit && (
+      {/* ── Admin / Owner Toolbar ── */}
+      {isLoggedIn && canEdit && !isEditing && (
         <div className="max-w-212.5 mx-auto px-4 mt-4 flex justify-end">
           <button
             onClick={() => setIsEditing((prev) => !prev)}
-            className={`btn btn-sm ${isEditing ? 'btn-ghost' : 'btn-soft'}`}
+            className="btn btn-sm btn-warning btn-outline hover:text-white"
           >
-            {isEditing ? 'Cancel Edit Mode' : '✏️ Edit Book'}
+            ✏️ Edit Book
           </button>
         </div>
       )}

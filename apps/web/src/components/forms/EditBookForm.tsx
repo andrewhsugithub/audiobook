@@ -276,7 +276,7 @@ export function EditBookForm({ book, coverFile, clearCover, onClose }: Props) {
                 type="button"
                 onClick={onClose}
                 disabled={isSubmitting}
-                className="btn btn-ghost"
+                className="btn btn-outline"
               >
                 Cancel
               </button>

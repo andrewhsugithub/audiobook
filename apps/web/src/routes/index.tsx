@@ -87,7 +87,7 @@ function App() {
               (isLoggedIn ? (
                 <button
                   onClick={handleSignOut}
-                  className="btn btn-sm btn-ghost"
+                  className="btn btn-sm btn-outline"
                 >
                   Sign Out
                 </button>
