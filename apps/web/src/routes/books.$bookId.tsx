@@ -38,7 +38,8 @@ function BookComponent() {
 
   const [isEditing, setIsEditing] = useState(false)
 
-  const { data: isInLibrary = false } = useIsInLibrary(bookId, isLoggedIn)
+  const { data: isInLibrary = false, isLoading: isLibraryCheckLoading } =
+    useIsInLibrary(bookId, isLoggedIn)
   const addToLibrary = useAddToLibrary()
   const removeFromLibrary = useRemoveFromLibrary()
 
@@ -324,6 +325,7 @@ function BookComponent() {
                       <BookmarkButton
                         isInLibrary={isInLibrary}
                         onClick={handleBookmarkToggle}
+                        isLoading={isLibraryCheckLoading}
                       />
                     </div>
 

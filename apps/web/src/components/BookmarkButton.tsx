@@ -1,13 +1,15 @@
-import { Bookmark } from 'lucide-react'
+import { Bookmark, Loader2 } from 'lucide-react'
 
 interface BookmarkButtonProps {
   isInLibrary: boolean
   onClick: () => void
+  isLoading: boolean
 }
 
 export default function BookmarkButton({
   isInLibrary,
   onClick,
+  isLoading,
 }: BookmarkButtonProps) {
   return (
     <div className="group relative inline-block">
@@ -18,12 +20,16 @@ export default function BookmarkButton({
         aria-pressed={isInLibrary}
         className="btn btn-circle btn-lg btn-soft"
       >
-        <Bookmark
-          className={`
-            h-6 w-6 transition-all duration-200
-            ${isInLibrary ? 'fill-current text-[var(--bookmark-active)]' : ''}
-          `}
-        />
+        {isLoading ? (
+          <Loader2 className="h-6 w-6 animate-spin text-[var(--sea-ink-soft)]" />
+        ) : (
+          <Bookmark
+            className={`
+              h-6 w-6 transition-all duration-200
+              ${isInLibrary ? 'fill-current text-[var(--bookmark-active)] scale-110' : ''}
+            `}
+          />
+        )}
       </button>
 
       <div
