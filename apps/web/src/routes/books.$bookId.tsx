@@ -314,7 +314,7 @@ function BookComponent() {
               </span>
 
               {/* ── Library Sync Interactive Actions Area ──────────────── */}
-              <div className="mt-8 flex items-center gap-4 w-full min-h-12">
+              <div className="mt-8 flex items-center gap-4 w-full min-h-12 relative">
                 {isInfoLoading ? (
                   <div className="h-12 w-12 rounded-full animate-pulse bg-[var(--line)] shrink-0" />
                 ) : isLoggedIn ? (
@@ -324,12 +324,15 @@ function BookComponent() {
                       <BookmarkButton
                         isInLibrary={isInLibrary}
                         onClick={handleBookmarkToggle}
+                        disabled={
+                          addToLibrary.isPending || removeFromLibrary.isPending
+                        }
                       />
 
                       {/* Visual Mutation Progress Indicator */}
                       {(addToLibrary.isPending ||
                         removeFromLibrary.isPending) && (
-                        <span className="text-xs text-[var(--sea-ink-soft)] animate-pulse font-medium whitespace-nowrap">
+                        <span className="absolute top-full left-0 mt-2 -translate-x-1/6 text-xs text-[var(--sea-ink-soft)] animate-pulse font-medium whitespace-nowrap">
                           Syncing library…
                         </span>
                       )}
