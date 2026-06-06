@@ -1,51 +1,101 @@
 import { createFileRoute, Link } from '@tanstack/react-router'
-import { useMemo, useState } from 'react'
-import { FaSearch } from 'react-icons/fa'
+import { useEffect, useRef, useState } from 'react'
 import Header from '../components/Header'
-import { useLibrary } from '../hooks/useLibrary'
-import { useAuth } from '../hooks/useAuth'
 import BookCard from '../components/BookCard'
 import UploadBookButton from '../components/UploadBookButton'
+import SearchBar from '../components/SearchBar'
+import SortSelect from '../components/SortSelect'
+import Pagination from '../components/Pagination'
+import { useAuth } from '../hooks/useAuth'
+import type { SortKey } from '../utils/queries'
+import { useLibrarySearch } from '../hooks/useLibrary'
 
 export const Route = createFileRoute('/my-books')({
   head: () => ({ meta: [{ title: 'My Books · Audiobook' }] }),
   component: MyBooksPage,
 })
 
-type Filter = 'all' | 'public' | 'private'
+type VisibilityFilter = 'all' | 'public' | 'private'
+type OwnerFilter = 'saved' | 'uploaded'
 
-const FILTERS: { key: Filter; label: string }[] = [
+const VISIBILITY_FILTERS: { key: VisibilityFilter; label: string }[] = [
   { key: 'all', label: 'All' },
   { key: 'public', label: '🌐 Public' },
   { key: 'private', label: '🔒 Private' },
 ]
 
+const OWNER_FILTERS: { key: OwnerFilter; label: string }[] = [
+  { key: 'saved', label: '📚 Saved' },
+  { key: 'uploaded', label: '⬆️ Uploaded by me' },
+]
+
+const PAGE_SIZE_OPTIONS = [10, 20, 50]
+const DEFAULT_PAGE_SIZE = 10
+const MAX_CARD = 220
+const GAP = 32
+
 function MyBooksPage() {
   const { isLoggedIn, isPending } = useAuth()
-  const { data, isLoading } = useLibrary(isLoggedIn)
-  const [filter, setFilter] = useState<Filter>('all')
-  const [query, setQuery] = useState('')
 
-  const books = data?.results ?? []
+  const [searchInput, setSearchInput] = useState('')
+  const [sort, setSort] = useState<SortKey>('recent')
+  const [visibilityFilter, setVisibilityFilter] =
+    useState<VisibilityFilter>('all')
+  const [ownerFilter, setOwnerFilter] = useState<OwnerFilter>('saved')
+  const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE)
+  const [page, setPage] = useState(1)
 
-  const counts = useMemo(
-    () => ({
-      all: books.length,
-      public: books.filter((b) => b.visibility === 'public').length,
-      private: books.filter((b) => b.visibility === 'private').length,
-    }),
-    [books],
-  )
+  useEffect(() => {
+    setPage(1)
+  }, [searchInput, sort, visibilityFilter, ownerFilter, pageSize])
 
-  const q = query.trim().toLowerCase()
-  const filtered = books.filter((b) => {
-    if (filter !== 'all' && b.visibility !== filter) return false
-    if (!q) return true
-    return (
-      b.title.toLowerCase().includes(q) ||
-      (b.author ?? '').toLowerCase().includes(q)
-    )
+  const offset = (page - 1) * pageSize
+
+  // FIXED: Use unified server-side paginated hook for both tabs
+  const {
+    data: libraryData,
+    isLoading,
+    isFetching,
+    isStale,
+  } = useLibrarySearch({
+    q: searchInput,
+    limit: pageSize,
+    offset,
+    sort,
+    visibility: visibilityFilter,
+    scope: ownerFilter,
+    enabled: !!isLoggedIn,
   })
+
+  const books = libraryData?.results ?? []
+  const total = libraryData?.total ?? 0
+  const totalPages = Math.max(1, Math.ceil(total / pageSize))
+
+  useEffect(() => {
+    if (!isLoading && page > totalPages) setPage(totalPages)
+  }, [isLoading, page, totalPages])
+
+  const isEmpty = !isLoading && books.length === 0
+
+  const gridRef = useRef<HTMLUListElement>(null)
+  const [isMultiRow, setIsMultiRow] = useState(false)
+
+  useEffect(() => {
+    const update = () => {
+      const container = gridRef.current
+      if (!container) return
+      const width = container.clientWidth
+      const totalWidth =
+        books.length * MAX_CARD + Math.max(0, books.length - 1) * GAP
+      setIsMultiRow(totalWidth > width)
+    }
+    update()
+    window.addEventListener('resize', update)
+    return () => window.removeEventListener('resize', update)
+  }, [books.length])
+
+  const rangeStart = total === 0 ? 0 : offset + 1
+  const rangeEnd = Math.min(offset + books.length, total)
 
   if (!isPending && !isLoggedIn) {
     return (
@@ -75,100 +125,134 @@ function MyBooksPage() {
         title="My Books"
         backTo="/"
         right={
-          <Link to="/upload" className="btn btn-sm btn-primary">
-            + Upload
-          </Link>
+          <div className="flex items-center gap-3">
+            <SearchBar value={searchInput} onChange={setSearchInput} />
+            <Link to="/upload" className="btn btn-sm btn-primary shrink-0">
+              + Upload
+            </Link>
+          </div>
         }
       />
 
-      <main className="mx-auto h-full max-w-6xl p-4 sm:p-6">
-        {/* Toolbar: search + visibility filters */}
-        <div className="mb-8 flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-          <div className="relative w-full md:max-w-xs">
-            <FaSearch
-              aria-hidden="true"
-              className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-sm opacity-50"
-            />
-            <input
-              type="search"
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              placeholder="Search your books…"
-              aria-label="Search your books"
-              autoComplete="off"
-              className="h-11 w-full rounded-full border border-[var(--chip-line)] bg-[var(--chip-bg)] pr-4 pl-11 text-sm text-[var(--sea-ink)] outline-none transition-all duration-300 placeholder:text-[var(--sea-ink-soft)]/60 focus:border-[var(--lagoon)] focus:ring-2 focus:ring-[var(--lagoon)]/20"
-            />
-          </div>
+      <main className="mx-auto max-w-7xl p-4 sm:p-6">
+        <div className="mb-4 flex gap-4 border-b border-[var(--chip-line)]">
+          {OWNER_FILTERS.map(({ key, label }) => (
+            <button
+              key={key}
+              onClick={() => setOwnerFilter(key)}
+              className={[
+                'pb-2 px-2 text-sm font-semibold border-b-2 transition-colors relative top-[1px]',
+                ownerFilter === key
+                  ? 'border-[var(--lagoon)] text-[var(--lagoon)]'
+                  : 'border-transparent text-[var(--sea-ink-soft)] hover:text-[var(--sea-ink)]',
+              ].join(' ')}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
 
-          <div className="flex flex-wrap gap-2">
-            {FILTERS.map(({ key, label }) => {
-              const active = filter === key
-              return (
-                <button
-                  key={key}
-                  onClick={() => setFilter(key)}
-                  className={`btn btn-sm ${active ? 'btn-primary' : 'btn-soft'}`}
-                >
-                  {label}
-                  <span className="ml-1.5 opacity-70">{counts[key]}</span>
-                </button>
-              )
-            })}
+        <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
+          <p className="min-h-5 text-sm text-[var(--sea-ink-soft)]">
+            {isLoading ? (
+              <span className="animate-pulse">Loading…</span>
+            ) : isEmpty ? null : (
+              <>
+                <span className="font-semibold text-[var(--sea-ink)]">
+                  {rangeStart}–{rangeEnd}
+                </span>{' '}
+                of {total} {total === 1 ? 'book' : 'books'}
+                {searchInput && <> for &ldquo;{searchInput}&rdquo;</>}
+                {isStale && <span className="ml-2 opacity-50">updating…</span>}
+              </>
+            )}
+          </p>
+
+          <div className="flex flex-wrap items-center gap-2">
+            {ownerFilter === 'saved' && (
+              <div className="flex gap-1.5">
+                {VISIBILITY_FILTERS.map(({ key, label }) => (
+                  <button
+                    key={key}
+                    onClick={() => setVisibilityFilter(key)}
+                    className={`btn btn-sm ${visibilityFilter === key ? 'btn-primary' : 'btn-soft'}`}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+            )}
+            <SortSelect value={sort} onChange={setSort} />
           </div>
         </div>
 
-        {isLoading ? (
+        <section>
           <ul
-            className="grid gap-8 justify-start"
+            ref={gridRef}
+            className="grid gap-8 justify-start animate-fade-in"
             style={{
-              gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 280px))',
+              gridTemplateColumns: isMultiRow
+                ? 'repeat(auto-fit, minmax(220px, 1fr))'
+                : 'repeat(auto-fit, minmax(220px, 280px))',
             }}
           >
-            {Array.from({ length: 5 }).map((_, i) => (
-              <li key={i} className="animate-pulse">
-                <div className="aspect-[2/3] bg-[var(--line)] rounded" />
-                <div className="mt-2 h-4 bg-[var(--line)] rounded w-3/4" />
-              </li>
-            ))}
-          </ul>
-        ) : (
-          <ul
-            className="grid gap-8 justify-start"
-            style={{
-              gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 280px))',
-            }}
-          >
-            <UploadBookButton />
+            {ownerFilter === 'uploaded' && <UploadBookButton />}
 
-            {filtered.length === 0 && (
-              <li className="col-span-full py-12 text-center text-sm text-[var(--sea-ink-soft)]">
-                {q
-                  ? `No books match “${query.trim()}”.`
-                  : filter === 'all'
-                    ? 'No saved books yet. Browse the library or upload your own!'
-                    : `No ${filter} books yet.`}
-              </li>
-            )}
-
-            {filtered.map((book) => (
-              <li key={book.id} className="relative">
-                {/* Visibility badge */}
-                <div className="pointer-events-none absolute top-2 left-2 z-10">
-                  <span
-                    className={
-                      book.visibility === 'public'
-                        ? 'rounded-full bg-[var(--palm)]/85 px-2 py-0.5 text-[10px] font-bold text-white backdrop-blur-sm'
-                        : 'rounded-full bg-black/45 px-2 py-0.5 text-[10px] font-bold text-white/90 backdrop-blur-sm'
-                    }
-                  >
-                    {book.visibility === 'public' ? '🌐' : '🔒'}
-                  </span>
-                </div>
-                <BookCard bookId={book.id} libraryTitle="My Books" />
-              </li>
-            ))}
+            {isLoading
+              ? Array.from({ length: pageSize }).map((_, i) => (
+                  <li key={i} className="w-[220px] sm:w-auto">
+                    <div className="aspect-[2/3] w-full rounded bg-[var(--line)] animate-pulse" />
+                    <div className="mt-2 h-4 w-3/4 rounded bg-[var(--line)] animate-pulse" />
+                    <div className="mt-1 h-3 w-1/2 rounded bg-[var(--line)] animate-pulse" />
+                  </li>
+                ))
+              : books.map((book) => (
+                  <li key={book.id} className="relative group">
+                    <div className="pointer-events-none absolute left-2 top-2 z-10 transition-transform group-hover:scale-105">
+                      <span
+                        className={
+                          book.visibility === 'public'
+                            ? 'rounded-full bg-[var(--palm)]/90 px-2 py-0.5 text-[10px] font-bold text-white backdrop-blur-sm shadow-sm'
+                            : 'rounded-full bg-black/60 px-2 py-0.5 text-[10px] font-bold text-white/90 backdrop-blur-sm shadow-sm'
+                        }
+                      >
+                        {book.visibility === 'public'
+                          ? '🌐 Public'
+                          : '🔒 Private'}
+                      </span>
+                    </div>
+                    <BookCard bookId={book.id} libraryTitle="My Books" />
+                  </li>
+                ))}
           </ul>
-        )}
+
+          {isEmpty && (
+            <div className="py-20 px-10 text-center text-sm text-[var(--sea-ink-soft)] bg-[var(--chip-bg)]/30 rounded-2xl border border-dashed border-[var(--chip-line)] max-w-lg mx-auto mt-6">
+              <p className="text-2xl mb-2">📭</p>
+              <p>
+                {searchInput
+                  ? `No search results matches your query for "${searchInput}".`
+                  : ownerFilter === 'uploaded'
+                    ? "You haven't uploaded any personal configurations yet."
+                    : visibilityFilter !== 'all'
+                      ? `No explicit ${visibilityFilter} book entries found inside your profile shelf.`
+                      : 'Your library is empty. Discover public tracks or append standard configurations to get started!'}
+              </p>
+            </div>
+          )}
+
+          {!isEmpty && (
+            <Pagination
+              page={page}
+              totalPages={totalPages}
+              onPageChange={setPage}
+              pageSize={pageSize}
+              onPageSizeChange={setPageSize}
+              pageSizeOptions={PAGE_SIZE_OPTIONS}
+              disabled={isFetching}
+            />
+          )}
+        </section>
       </main>
     </div>
   )
