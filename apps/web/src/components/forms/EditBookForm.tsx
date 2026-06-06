@@ -181,7 +181,7 @@ export function EditBookForm({ book, coverFile, clearCover, onClose }: Props) {
                 type="range"
                 min="0"
                 max="5"
-                step="0.1"
+                step="0.5"
                 value={field.state.value}
                 onChange={(e) =>
                   field.handleChange(parseFloat(e.target.value) || 0)
