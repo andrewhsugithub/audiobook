@@ -4,6 +4,7 @@ import { useQuery } from '@tanstack/react-query'
 
 import BookCard from '../components/BookCard'
 import Header from '../components/Header'
+import SearchBar from '../components/SearchBar'
 import SortSelect from '../components/SortSelect'
 import Pagination from '../components/Pagination'
 import { userProfileQuery } from '../utils/queries'
@@ -20,18 +21,17 @@ export const Route = createFileRoute('/users/$userId')({
 
 function UserBooksPage() {
   const userId = Route.useParams().userId
-  // Name is passed from the book page for an instant title; deep links fall
-  // back to the fetched profile below.
   const { name: passedName } = Route.useSearch() as { name?: string }
 
+  const [searchInput, setSearchInput] = useState('')
   const [sort, setSort] = useState<SortKey>('recent')
   const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE)
   const [page, setPage] = useState(1)
 
-  // Reset to page 1 whenever sort or page size changes.
+  // Reset to page 1 whenever any filter changes
   useEffect(() => {
     setPage(1)
-  }, [sort, pageSize])
+  }, [searchInput, sort, pageSize])
 
   const offset = (page - 1) * pageSize
 
@@ -42,9 +42,10 @@ function UserBooksPage() {
   const {
     data: searchData,
     isLoading,
+    isStale,
     isFetching,
   } = useSearch({
-    q: '',
+    q: searchInput,
     limit: pageSize,
     offset,
     sort,
@@ -61,12 +62,15 @@ function UserBooksPage() {
   }, [isLoading, page, totalPages])
 
   const isEmpty = !isLoading && books.length === 0
+  const rangeStart = total === 0 ? 0 : offset + 1
+  const rangeEnd = Math.min(offset + books.length, total)
 
   return (
     <div className="min-w-[360px] pb-20">
       <Header
         title={profile?.name ?? passedName ?? 'Uploads'}
         backTo="/library"
+        right={<SearchBar value={searchInput} onChange={setSearchInput} />}
       />
 
       <main className="mx-auto max-w-7xl p-4 content-start">
@@ -89,21 +93,34 @@ function UserBooksPage() {
           <div>
             <h2 className="display-title text-2xl font-bold">{displayName}</h2>
             <p className="text-sm text-[var(--sea-ink-soft)]">
-              {isLoading
-                ? 'Loading…'
-                : `${total} ${total === 1 ? 'book' : 'books'} uploaded`}
+              {isLoading ? (
+                <span className="animate-pulse">Loading…</span>
+              ) : (
+                <>
+                  <span className="font-semibold text-[var(--sea-ink)]">
+                    {rangeStart}–{rangeEnd}
+                  </span>{' '}
+                  of {total} {total === 1 ? 'book' : 'books'}
+                  {searchInput && <> for &ldquo;{searchInput}&rdquo;</>}
+                  {isStale && (
+                    <span className="ml-2 opacity-50">updating…</span>
+                  )}
+                </>
+              )}
             </p>
           </div>
         </div>
 
-        {/* Sort */}
+        {/* Toolbar */}
         <div className="mb-6 flex items-center justify-end">
           <SortSelect value={sort} onChange={setSort} />
         </div>
 
         {isEmpty && (
           <p className="py-16 text-center text-sm text-[var(--sea-ink-soft)]">
-            No books from {displayName} yet.
+            {searchInput
+              ? `No results for "${searchInput}" from ${displayName}.`
+              : `No books from ${displayName} yet.`}
           </p>
         )}
 
@@ -113,21 +130,20 @@ function UserBooksPage() {
             gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 280px))',
           }}
         >
-          {books.map((book) => (
-            <BookCard
-              key={book.id}
-              bookId={book.id}
-              libraryTitle={displayName}
-            />
-          ))}
-
-          {isLoading &&
-            Array.from({ length: 6 }).map((_, i) => (
-              <li key={i} className="animate-pulse">
-                <div className="aspect-[2/3] bg-[var(--line)] rounded" />
-                <div className="mt-2 h-4 bg-[var(--line)] rounded w-3/4" />
-              </li>
-            ))}
+          {isLoading
+            ? Array.from({ length: pageSize }).map((_, i) => (
+                <li key={i} className="animate-pulse">
+                  <div className="aspect-[2/3] bg-[var(--line)] rounded" />
+                  <div className="mt-2 h-4 bg-[var(--line)] rounded w-3/4" />
+                </li>
+              ))
+            : books.map((book) => (
+                <BookCard
+                  key={book.id}
+                  bookId={book.id}
+                  libraryTitle={displayName}
+                />
+              ))}
         </ul>
 
         {!isEmpty && (
