@@ -55,7 +55,7 @@ const patchSchema = z.object({
 
 const searchSchema = z.object({
   q: z.string().default(""),
-  limit: z.coerce.number().min(1).max(50).default(30),
+  limit: z.coerce.number().min(1).max(50).default(10),
   offset: z.coerce.number().min(0).default(0),
   sort: z
     .enum(["recent", "title-asc", "title-desc", "author-asc", "rating-desc"])
@@ -66,6 +66,11 @@ const searchSchema = z.object({
     .default(false),
   // Restrict results to a single uploader (used by the user's uploads page).
   userId: z.string().optional(),
+  uploadedByMe: z
+    .string()
+    .transform((v) => v === "true")
+    .optional()
+    .default(false),
 });
 
 // METADATA ENDPOINT WITH ETAG SWR VALIDATION
@@ -569,6 +574,7 @@ app.get("/search", zValidator("query", searchSchema), async (c) => {
     sort,
     completeOnly,
     userId,
+    uploadedByMe,
   } = c.req.valid("query");
   const db = getDb(c.env.HYPERDRIVE.connectionString);
 
@@ -607,10 +613,20 @@ app.get("/search", zValidator("query", searchSchema), async (c) => {
         )
       : eq(audiobooks.visibility, "public");
 
+  // If uploadedByMe=true, override userId filter with the current user's ID
+  // If the user is not authenticated, uploadedByMe is a no-op (returns nothing)
+  const ownerFilter = uploadedByMe
+    ? currentUserId
+      ? eq(audiobooks.userId, currentUserId)
+      : sql`false` // not logged in + uploadedByMe=true → empty result
+    : userId
+      ? eq(audiobooks.userId, userId)
+      : undefined;
+
   const baseCondition = and(
     completeOnly ? eq(audiobooks.status, "completed") : undefined,
     visibilityFilter,
-    userId ? eq(audiobooks.userId, userId) : undefined,
+    ownerFilter,
   );
 
   const searchCondition =
