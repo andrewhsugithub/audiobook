@@ -1,7 +1,7 @@
-import { useRouter } from '@tanstack/react-router'
+import { useRouter, Link } from '@tanstack/react-router'
 import ThemeToggle from './ThemeToggle'
 
-import { FaArrowLeft } from 'react-icons/fa'
+import { FaArrowLeft, FaHome } from 'react-icons/fa'
 
 type Props = {
   title: string
@@ -17,17 +17,28 @@ export default function Header({ title, right }: Props) {
 
   return (
     <header className="sticky top-0 z-999 flex h-16 items-center justify-between bg-[var(--header-bg)] px-10 backdrop-blur-xl">
-      {/* Back */}
-      <button
-        onClick={() => router.history.back()}
-        aria-label="Go back"
-        className="btn btn-ghost btn-circle btn-sm relative z-10"
-      >
-        <FaArrowLeft aria-hidden="true" />
-      </button>
+      {/* Left Navigation Actions Group */}
+      <div className="relative z-10 flex items-center gap-2">
+        {/* Back */}
+        <button
+          onClick={() => router.history.back()}
+          aria-label="Go back"
+          className="btn btn-ghost btn-circle btn-sm"
+        >
+          <FaArrowLeft aria-hidden="true" />
+        </button>
 
-      {/* Current Library */}
-      <div className="pointer-events-none absolute left-1/2 max-w-[min(52vw,34rem)] -translate-x-1/2 px-2">
+        <Link
+          to="/"
+          aria-label="Go to home library dashboard"
+          className="btn btn-ghost btn-circle btn-sm flex items-center justify-center text-base"
+        >
+          <FaHome aria-hidden="true" />
+        </Link>
+      </div>
+
+      {/* Current Library Title Layout Block */}
+      <div className="pointer-events-none absolute left-1/2 max-w-[min(50vw,30rem)] -translate-x-1/2 px-2">
         <h1 className="display-title truncate text-2xl font-bold">
           {title || 'Library'}
         </h1>
