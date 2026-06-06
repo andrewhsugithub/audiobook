@@ -1,5 +1,7 @@
 import { useForm } from '@tanstack/react-form'
 import { useQueryClient } from '@tanstack/react-query'
+import { useNavigate } from '@tanstack/react-router'
+import { useRef, useState } from 'react'
 import { z } from 'zod'
 import { API_BASE_URL as BASE_URL } from '../../utils/api'
 import { useToast } from '../Toast'
@@ -22,7 +24,54 @@ interface Props {
 
 export function EditBookForm({ book, coverFile, clearCover, onClose }: Props) {
   const queryClient = useQueryClient()
+  const navigate = useNavigate()
   const toast = useToast()
+
+  // Delete modal state
+  const deleteModalRef = useRef<HTMLDialogElement>(null)
+  const [deleteInput, setDeleteInput] = useState('')
+  const [isDeleting, setIsDeleting] = useState(false)
+
+  const confirmTitle = book.title ?? ''
+  const deleteMatch = deleteInput.trim() === confirmTitle.trim()
+
+  const handleDelete = async () => {
+    if (!deleteMatch) return
+    setIsDeleting(true)
+    try {
+      const res = await fetch(`${BASE_URL}/audiobook/${book.id}`, {
+        method: 'DELETE',
+        credentials: 'include',
+      })
+
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}))
+        throw new Error(body.error ?? `Server error ${res.status}`)
+      }
+
+      // Invalidate all related caches before navigating away
+      await Promise.all([
+        queryClient.invalidateQueries({
+          queryKey: ['audiobook-info', book.id],
+        }),
+        queryClient.invalidateQueries({ queryKey: ['audiobook-search'] }),
+        queryClient.invalidateQueries({
+          queryKey: ['audiobook-search-infinite'],
+        }),
+        queryClient.invalidateQueries({ queryKey: ['library-search'] }),
+        queryClient.invalidateQueries({ queryKey: ['user-library'] }),
+      ])
+
+      deleteModalRef.current?.close()
+      toast.success(`"${confirmTitle}" has been deleted.`)
+      onClose()
+      navigate({ to: '/' })
+    } catch (err: any) {
+      toast.error(err.message ?? 'Failed to delete audiobook.')
+    } finally {
+      setIsDeleting(false)
+    }
+  }
 
   const form = useForm({
     defaultValues: {
@@ -34,7 +83,6 @@ export function EditBookForm({ book, coverFile, clearCover, onClose }: Props) {
     },
     validators: { onSubmit: editSchema },
     onSubmit: async ({ value }) => {
-      // Always use FormData so cover upload is optional but unified
       const formData = new FormData()
       formData.append('title', value.title)
       formData.append('author', value.author)
@@ -65,173 +113,283 @@ export function EditBookForm({ book, coverFile, clearCover, onClose }: Props) {
   })
 
   return (
-    <form
-      onSubmit={(e) => {
-        e.preventDefault()
-        e.stopPropagation()
-        form.handleSubmit()
-      }}
-      className="space-y-5"
-    >
-      <p className="island-kicker">Edit details</p>
+    <>
+      <form
+        onSubmit={(e) => {
+          e.preventDefault()
+          e.stopPropagation()
+          form.handleSubmit()
+        }}
+        className="space-y-5"
+      >
+        <p className="island-kicker">Edit details</p>
 
-      {/* Title */}
-      <form.Field name="title">
-        {(field) => (
-          <div className="space-y-1.5">
-            <label htmlFor={field.name} className="field-label">
-              Title
-            </label>
-            <input
-              id={field.name}
-              type="text"
-              value={field.state.value}
-              onBlur={field.handleBlur}
-              onChange={(e) => field.handleChange(e.target.value)}
-              className="field-input text-xl font-bold"
-            />
-            {field.state.meta.errors.length > 0 && (
-              <p className="text-sm text-error">
-                {field.state.meta.errors
-                  .map((e: any) => e?.message ?? e)
-                  .join(', ')}
-              </p>
-            )}
-          </div>
-        )}
-      </form.Field>
-
-      {/* Author */}
-      <form.Field name="author">
-        {(field) => (
-          <div className="space-y-1.5">
-            <label htmlFor={field.name} className="field-label">
-              Author
-            </label>
-            <input
-              id={field.name}
-              type="text"
-              value={field.state.value}
-              onBlur={field.handleBlur}
-              onChange={(e) => field.handleChange(e.target.value)}
-              className="field-input uppercase"
-            />
-          </div>
-        )}
-      </form.Field>
-
-      {/* Rating */}
-      <form.Field name="ratings">
-        {(field) => (
-          <div className="space-y-1.5">
-            <label htmlFor={field.name} className="field-label">
-              Rating — {field.state.value.toFixed(1)} / 5
-            </label>
-            <input
-              id={field.name}
-              type="range"
-              min="0"
-              max="5"
-              step="0.1"
-              value={field.state.value}
-              onChange={(e) =>
-                field.handleChange(parseFloat(e.target.value) || 0)
-              }
-              className="range range-primary range-sm w-full"
-            />
-          </div>
-        )}
-      </form.Field>
-
-      {/* Visibility */}
-      <form.Field name="visibility">
-        {(field) => {
-          const isPublic = field.state.value === 'public'
-          return (
+        {/* Title */}
+        <form.Field name="title">
+          {(field) => (
             <div className="space-y-1.5">
-              <span className="field-label">Visibility</span>
-              <label className="flex cursor-pointer items-center justify-between gap-3 rounded-xl border border-[var(--line)] bg-[var(--surface)] px-4 py-3 transition-colors hover:border-[var(--lagoon)]">
-                <span className="flex items-center gap-3">
-                  <span className="text-lg">{isPublic ? '🌐' : '🔒'}</span>
-                  <span>
-                    <span className="block text-sm font-semibold text-[var(--sea-ink)]">
-                      {isPublic ? 'Public' : 'Private'}
-                    </span>
-                    <span className="block text-xs text-[var(--sea-ink-soft)]">
-                      {isPublic
-                        ? 'Visible to everyone in the library'
-                        : 'Only visible to you'}
+              <label htmlFor={field.name} className="field-label">
+                Title
+              </label>
+              <input
+                id={field.name}
+                type="text"
+                value={field.state.value}
+                onBlur={field.handleBlur}
+                onChange={(e) => field.handleChange(e.target.value)}
+                className="field-input text-xl font-bold"
+              />
+              {field.state.meta.errors.length > 0 && (
+                <p className="text-sm text-error">
+                  {field.state.meta.errors
+                    .map((e: any) => e?.message ?? e)
+                    .join(', ')}
+                </p>
+              )}
+            </div>
+          )}
+        </form.Field>
+
+        {/* Author */}
+        <form.Field name="author">
+          {(field) => (
+            <div className="space-y-1.5">
+              <label htmlFor={field.name} className="field-label">
+                Author
+              </label>
+              <input
+                id={field.name}
+                type="text"
+                value={field.state.value}
+                onBlur={field.handleBlur}
+                onChange={(e) => field.handleChange(e.target.value)}
+                className="field-input uppercase"
+              />
+            </div>
+          )}
+        </form.Field>
+
+        {/* Rating */}
+        <form.Field name="ratings">
+          {(field) => (
+            <div className="space-y-1.5">
+              <label htmlFor={field.name} className="field-label">
+                Rating — {field.state.value.toFixed(1)} / 5
+              </label>
+              <input
+                id={field.name}
+                type="range"
+                min="0"
+                max="5"
+                step="0.1"
+                value={field.state.value}
+                onChange={(e) =>
+                  field.handleChange(parseFloat(e.target.value) || 0)
+                }
+                className="range range-primary range-sm w-full"
+              />
+            </div>
+          )}
+        </form.Field>
+
+        {/* Visibility */}
+        <form.Field name="visibility">
+          {(field) => {
+            const isPublic = field.state.value === 'public'
+            return (
+              <div className="space-y-1.5">
+                <span className="field-label">Visibility</span>
+                <label className="flex cursor-pointer items-center justify-between gap-3 rounded-xl border border-[var(--line)] bg-[var(--surface)] px-4 py-3 transition-colors hover:border-[var(--lagoon)]">
+                  <span className="flex items-center gap-3">
+                    <span className="text-lg">{isPublic ? '🌐' : '🔒'}</span>
+                    <span>
+                      <span className="block text-sm font-semibold text-[var(--sea-ink)]">
+                        {isPublic ? 'Public' : 'Private'}
+                      </span>
+                      <span className="block text-xs text-[var(--sea-ink-soft)]">
+                        {isPublic
+                          ? 'Visible to everyone in the library'
+                          : 'Only visible to you'}
+                      </span>
                     </span>
                   </span>
-                </span>
-                <input
-                  type="checkbox"
-                  checked={isPublic}
-                  onChange={(e) =>
-                    field.handleChange(e.target.checked ? 'public' : 'private')
-                  }
-                  className="toggle toggle-primary"
-                  aria-label="Toggle public visibility"
-                />
-              </label>
-            </div>
-          )
-        }}
-      </form.Field>
+                  <input
+                    type="checkbox"
+                    checked={isPublic}
+                    onChange={(e) =>
+                      field.handleChange(
+                        e.target.checked ? 'public' : 'private',
+                      )
+                    }
+                    className="toggle toggle-primary"
+                    aria-label="Toggle public visibility"
+                  />
+                </label>
+              </div>
+            )
+          }}
+        </form.Field>
 
-      {/* Description */}
-      <form.Field name="description">
-        {(field) => (
+        {/* Description */}
+        <form.Field name="description">
+          {(field) => (
+            <div className="space-y-1.5">
+              <label htmlFor={field.name} className="field-label">
+                Description
+              </label>
+              <textarea
+                id={field.name}
+                value={field.state.value}
+                onBlur={field.handleBlur}
+                onChange={(e) => field.handleChange(e.target.value)}
+                className="field-input h-36 resize-y"
+                placeholder="Enter book description…"
+              />
+            </div>
+          )}
+        </form.Field>
+
+        {/* Actions */}
+        <form.Subscribe
+          selector={(s) => ({
+            canSubmit: s.canSubmit,
+            isSubmitting: s.isSubmitting,
+          })}
+        >
+          {({ canSubmit, isSubmitting }) => (
+            <div className="flex gap-3 pt-1">
+              <button
+                type="submit"
+                disabled={!canSubmit}
+                className="btn btn-primary flex-1"
+              >
+                {isSubmitting ? (
+                  <>
+                    <span className="loading loading-spinner loading-sm" />
+                    Saving…
+                  </>
+                ) : (
+                  '💾 Save Changes'
+                )}
+              </button>
+              <button
+                type="button"
+                onClick={onClose}
+                disabled={isSubmitting}
+                className="btn btn-ghost"
+              >
+                Cancel
+              </button>
+            </div>
+          )}
+        </form.Subscribe>
+
+        {/* Delete trigger */}
+        <div className="border-t border-[var(--line)] pt-4">
+          <button
+            type="button"
+            onClick={() => {
+              setDeleteInput('')
+              deleteModalRef.current?.showModal()
+            }}
+            className="btn btn-outline btn-error btn-sm w-full"
+          >
+            🗑 Delete this audiobook
+          </button>
+        </div>
+      </form>
+
+      {/* ── Delete confirmation modal ── */}
+      <dialog
+        ref={deleteModalRef}
+        className="modal"
+        /* Catches keyboard 'Escape' key inputs during processing streams */
+        onCancel={(e) => {
+          if (isDeleting) {
+            e.preventDefault()
+          }
+        }}
+      >
+        <div className="modal-box space-y-4">
+          {/* Close button */}
+          <form method="dialog">
+            <button
+              className="btn btn-sm btn-circle btn-ghost absolute right-2 top-2"
+              disabled={isDeleting}
+            >
+              ✕
+            </button>
+          </form>
+
+          <h3 className="text-lg font-bold text-error">Delete audiobook</h3>
+
+          <p className="text-sm text-[var(--sea-ink-soft)]">
+            This will permanently delete all audio segments, the cover image,
+            and all associated data. This action{' '}
+            <span className="font-semibold text-[var(--sea-ink)]">
+              cannot be undone
+            </span>
+            .
+          </p>
+
+          {/* The thing they must type */}
+          <div className="rounded-lg bg-[var(--chip-bg)] px-4 py-2 text-sm font-mono font-semibold text-[var(--sea-ink)]">
+            {confirmTitle}
+          </div>
+
           <div className="space-y-1.5">
-            <label htmlFor={field.name} className="field-label">
-              Description
+            <label className="field-label">
+              Type the title above to confirm
             </label>
-            <textarea
-              id={field.name}
-              value={field.state.value}
-              onBlur={field.handleBlur}
-              onChange={(e) => field.handleChange(e.target.value)}
-              className="field-input h-36 resize-y"
-              placeholder="Enter book description…"
+            <input
+              type="text"
+              value={deleteInput}
+              onChange={(e) => setDeleteInput(e.target.value)}
+              onPaste={(e) => e.preventDefault()}
+              placeholder={confirmTitle}
+              className="field-input"
+              autoComplete="off"
+              spellCheck={false}
+              disabled={isDeleting}
             />
           </div>
-        )}
-      </form.Field>
 
-      {/* Actions — field-level messages above already surface validation errors */}
-      <form.Subscribe
-        selector={(s) => ({
-          canSubmit: s.canSubmit,
-          isSubmitting: s.isSubmitting,
-        })}
-      >
-        {({ canSubmit, isSubmitting }) => (
           <div className="flex gap-3 pt-1">
             <button
-              type="submit"
-              disabled={!canSubmit}
-              className="btn btn-primary flex-1"
+              type="button"
+              onClick={handleDelete}
+              disabled={!deleteMatch || isDeleting}
+              className="btn btn-error flex-1"
             >
-              {isSubmitting ? (
+              {isDeleting ? (
                 <>
                   <span className="loading loading-spinner loading-sm" />
-                  Saving…
+                  Deleting…
                 </>
               ) : (
-                '💾 Save Changes'
+                'Delete permanently'
               )}
             </button>
-            <button
-              type="button"
-              onClick={onClose}
-              disabled={isSubmitting}
-              className="btn btn-ghost"
-            >
-              Cancel
-            </button>
+
+            {/* Closes modal without doing anything */}
+            <form method="dialog" className="contents">
+              <button
+                type="submit"
+                disabled={isDeleting}
+                className="btn btn-ghost hover:border-slate-300"
+              >
+                Cancel
+              </button>
+            </form>
           </div>
+        </div>
+
+        {!isDeleting && (
+          <form method="dialog" className="modal-backdrop">
+            <button>close</button>
+          </form>
         )}
-      </form.Subscribe>
-    </form>
+      </dialog>
+    </>
   )
 }
