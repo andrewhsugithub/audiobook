@@ -143,18 +143,6 @@ function BookComponent() {
         backSearch={{ title: title || 'Library' }}
       />
 
-      {/* ── Admin / Owner Toolbar ── */}
-      {isLoggedIn && canEdit && !isEditing && (
-        <div className="max-w-212.5 mx-auto px-4 mt-4 flex justify-end">
-          <button
-            onClick={() => setIsEditing((prev) => !prev)}
-            className="btn btn-sm btn-warning btn-outline hover:text-white"
-          >
-            ✏️ Edit Book
-          </button>
-        </div>
-      )}
-
       <main className="mx-auto grid max-w-212.5 grid-cols-1 items-start gap-10 p-2.5 pt-6 min-[551px]:grid-cols-[minmax(160px,1fr)_1.6fr]">
         {/* ── Cover Element ───────────────────────────────────────────── */}
         <div className="group relative [perspective:900px] min-[551px]:sticky min-[551px]:top-6">
@@ -231,14 +219,25 @@ function BookComponent() {
             </>
           ) : (
             <>
-              {/* ── Read-only view ─────────────────────────────────────── */}
-              <h2 className="display-title text-3xl font-bold">
-                {isInfoLoading ? (
-                  <span className="animate-pulse bg-[var(--line)] rounded h-8 w-48 block" />
-                ) : (
-                  book?.title
+              <div className="flex items-center">
+                {/* ── Read-only view ─────────────────────────────────────── */}
+                <h2 className="flex-1 display-title text-3xl font-bold">
+                  {isInfoLoading ? (
+                    <span className="animate-pulse bg-[var(--line)] rounded h-8 w-48 block" />
+                  ) : (
+                    book?.title
+                  )}
+                </h2>
+                {/* ── Admin / Owner Toolbar ── */}
+                {isLoggedIn && canEdit && !isEditing && (
+                  <button
+                    onClick={() => setIsEditing((prev) => !prev)}
+                    className="btn btn-sm btn-warning btn-outline hover:text-white"
+                  >
+                    ✏️ Edit Book
+                  </button>
                 )}
-              </h2>
+              </div>
 
               <small className="mt-4 text-xl uppercase opacity-70 block">
                 {isInfoLoading ? (
@@ -381,12 +380,6 @@ function BookComponent() {
                   </div>
                 )}
               </div>
-              {/* Visual Mutation Progress Indicator */}
-              {/* {(addToLibrary.isPending || removeFromLibrary.isPending) && (
-                  <span className="text-xs text-white/40 animate-pulse font-medium">
-                    Syncing library…
-                  </span>
-                )} */}
 
               {/* Description */}
               <div className="mt-10 max-w-3xl leading-8 text-[var(--sea-ink-soft)]">
