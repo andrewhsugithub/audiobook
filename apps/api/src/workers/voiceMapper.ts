@@ -106,24 +106,31 @@ export async function handleVoiceMappingQueue(
           id: voices.id,
           name: voices.name,
           gender: voices.gender,
-          description: voices.description,
+          // TODO: consider these fields for voice assignment heuristics
+          // description: voices.description,
+          // language: voices.language,
+          // tags: voices.tags,
+          // country: voices.country,
+          // accent: voices.accent,
         })
         .from(voices)
         .where(eq(voices.provider, "cartesia"))
         .orderBy(voices.id);
 
       if (cartesiaVoices.length === 0) {
-        throw new Error(
-          "No Cartesia voices available in `voices` table.",
-        );
+        throw new Error("No Cartesia voices available in `voices` table.");
       }
       const narratorVoiceId = cartesiaVoices[0].id;
       const characterPool =
         cartesiaVoices.length > 1 ? cartesiaVoices.slice(1) : cartesiaVoices;
 
       // Split into gender pools
-      const masculinePool = characterPool.filter((v) => v.gender === "masculine" || v.gender === "male");
-      const femininePool = characterPool.filter((v) => v.gender === "feminine" || v.gender === "female");
+      const masculinePool = characterPool.filter(
+        (v) => v.gender === "masculine" || v.gender === "male",
+      );
+      const femininePool = characterPool.filter(
+        (v) => v.gender === "feminine" || v.gender === "female",
+      );
 
       // Fallback if pools are empty
       if (masculinePool.length === 0) masculinePool.push(...characterPool);
@@ -227,12 +234,16 @@ ${rawText.substring(0, 4000)}
             assignVoice(char, gender);
           }
 
-          console.log(`[voice-mapping queue] Final Voice Assignments for New Characters in Chunk:`);
+          console.log(
+            `[voice-mapping queue] Final Voice Assignments for New Characters in Chunk:`,
+          );
           for (const char of unmappedCharacters) {
             const gender = llmMappings[char] || "masculine";
             const voiceId = voiceMap[char];
             const voiceObj = characterPool.find((v) => v.id === voiceId);
-            console.log(`  ➤ ${char} (${gender}) -> Voice: ${voiceObj?.name || 'Unknown'} (${voiceId})`);
+            console.log(
+              `  ➤ ${char} (${gender}) -> Voice: ${voiceObj?.name || "Unknown"} (${voiceId})`,
+            );
           }
         } catch (err) {
           console.error(
@@ -258,11 +269,15 @@ ${rawText.substring(0, 4000)}
             usedVoices.add(chosenVoiceId);
           }
 
-          console.log(`[voice-mapping queue]  Final Voice Assignments (Fallback Mode):`);
+          console.log(
+            `[voice-mapping queue]  Final Voice Assignments (Fallback Mode):`,
+          );
           for (const char of unmappedCharacters) {
             const voiceId = voiceMap[char];
             const voiceObj = characterPool.find((v) => v.id === voiceId);
-            console.log(`   ${char} (hash-fallback) -> Voice: ${voiceObj?.name || 'Unknown'} (${voiceId})`);
+            console.log(
+              `   ${char} (hash-fallback) -> Voice: ${voiceObj?.name || "Unknown"} (${voiceId})`,
+            );
           }
         }
       }
