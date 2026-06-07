@@ -150,10 +150,7 @@ export const audiobookInfoQuery = (bookId: string) =>
     refetchInterval: (query) => {
       const status = query.state.data?.status
       if (status !== 'processing') return false
-      console.log(
-        `Audiobook ${bookId} is processing, setting refetch interval to check for updates.`,
-      )
-      return 5000 // 30s — if still processing, check for updates every minute
+      return 10000 // 30s — if still processing, check for updates every minute
     },
   })
 
