@@ -38,6 +38,7 @@ export const voices = pgTable(
     gender: varchar("gender", { length: 50 }),
     language: varchar("language", { length: 50 }),
     country: varchar("country", { length: 50 }),
+    accent: varchar("accent", { length: 50 }),
     description: text("description"),
 
     provider: providerEnum("provider").notNull(),
@@ -52,6 +53,10 @@ export const voices = pgTable(
     voiceFileKey: varchar("voice_file_key", { length: 500 }),
     // Optional: URL for previewing the voice, especially useful for third-party voices
     previewFileUrl: text("preview_file_url"),
+
+    // cartesia-specific tags
+    // e.g. [ { id: "tag_p4pEiDyyoF82hgiSbq59QN", label: "Energetic", description: "", created_at: "" }, { id: "tag_TyakDv7KYbLcnREqf9dkfT", label: "Friendly", description: "", created_at: "" } ]
+    tags: jsonb("tags"),
 
     // Provider-specific extra metadata that doesn't fit columns
     // Cartesia: { mode: "similarity", is_owner: false }
