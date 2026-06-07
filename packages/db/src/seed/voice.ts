@@ -9,6 +9,13 @@ import { DATABASE_URL } from "@audiobook/shared-libs/config/env.js";
 import * as schema from "../schema/schema.js";
 import { parse } from "jsonc-parser";
 
+interface CartesiaVoiceTags {
+  id: string;
+  label: string;
+  description: string;
+  created_at: string; // ISO timestamp
+}
+
 interface CartesiaVoiceResponse {
   id: string;
   mode: string;
@@ -19,8 +26,12 @@ interface CartesiaVoiceResponse {
   created_at: string; // ISO timestamp
   gender: string;
   language: string;
+  is_starred: boolean;
+  tags: CartesiaVoiceTags[];
   preview_file_url: string;
   country: string;
+  accent: string;
+  is_featured: boolean;
   is_pro: boolean;
 }
 
@@ -31,7 +42,8 @@ export async function voiceSeed() {
 
   console.log("📖 Reading immutable voice profiles from JSON data file...");
   // TODO: refactor to read from a directory of JSON files
-  const jsonPath = "cartesia-voices.jsonc"; // change this path if your JSON file is located elsewhere
+  // const jsonPath = "cartesia-voices.jsonc"; // change this path if your JSON file is located elsewhere
+  const jsonPath = "emotive.jsonc"; // change this path if your JSON file is located elsewhere
   const rawData = await fs.readFile(jsonPath, "utf-8");
   const parsedData = parse(rawData) as
     | CartesiaVoiceResponse[]
@@ -47,16 +59,19 @@ export async function voiceSeed() {
     gender: voice.gender,
     language: voice.language,
     country: voice.country,
+    accent: voice.accent,
     description: voice.description,
     provider: "cartesia" as const,
     externalVoiceId: voice.id,
     previewFileUrl: voice.preview_file_url,
+    tags: voice.tags,
     providerMetadata: {
       mode: voice.mode,
       is_owner: voice.is_owner,
       is_public: voice.is_public,
       is_pro: voice.is_pro,
       created_at: voice.created_at,
+      is_starred: voice.is_starred,
       output_format: {
         container: "wav",
         encoding: "pcm_s16le",
@@ -84,7 +99,7 @@ export async function voiceSeed() {
     console.log("❌ Seeding cancelled by user.");
     process.exit(1);
   }
-  await reset(db, { voices: schema.voices });
+  await db.delete(voices).execute(); // Clear existing data in voices table
   await db.insert(voices).values(mappedVoices);
 
   console.log(
