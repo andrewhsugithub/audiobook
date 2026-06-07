@@ -8,7 +8,7 @@ import { useToast } from '../Toast'
 import { metadataFieldMap, MetadataFields } from './MetaFields'
 import { useAppForm } from '../../context/form-context'
 import { useAddToLibrary } from '../../hooks/useLibrary'
-import { queryClient } from '../../router'
+import { useQueryClient } from '@tanstack/react-query'
 
 const ACCEPTED_EXTENSIONS = ['.pdf', '.txt']
 const MAX_FILE_SIZE = 50 * 1024 * 1024
@@ -38,18 +38,6 @@ function validateFile(file: File): string | null {
   return null
 }
 
-function refetchQueries(bookId: string) {
-  const sanitizedId = String(bookId).trim() // Ensure no hidden string layout pollution
-
-  return Promise.all([
-    queryClient.invalidateQueries({
-      queryKey: ['audiobook-info', sanitizedId],
-      exact: true,
-      type: 'all',
-    }),
-  ])
-}
-
 interface Props {
   existingBookId?: string
   existingTitle?: string
@@ -58,6 +46,7 @@ interface Props {
 
 export function UploadForm({ existingBookId, existingTitle, onClose }: Props) {
   const navigate = useNavigate()
+  const queryClient = useQueryClient()
   const toast = useToast()
   const { userId } = useAuth()
   const { state, upload, uploadText, abort, reset } = useMultipartUpload()
@@ -93,7 +82,9 @@ export function UploadForm({ existingBookId, existingTitle, onClose }: Props) {
 
         console.log('Upload successful, book ID:', bookId)
 
-        await refetchQueries(bookId)
+        await queryClient.invalidateQueries({
+          queryKey: ['audiobook-info', bookId],
+        })
 
         toast.success('Upload complete — processing started.')
 
@@ -125,7 +116,9 @@ export function UploadForm({ existingBookId, existingTitle, onClose }: Props) {
           existingBookId,
         })
 
-        await refetchQueries(bookId)
+        await queryClient.invalidateQueries({
+          queryKey: ['audiobook-info', bookId],
+        })
 
         toast.success('Upload complete — processing started.')
         addToLibrary.mutate(bookId)
