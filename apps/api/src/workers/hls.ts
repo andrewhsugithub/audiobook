@@ -14,16 +14,10 @@ export async function handleHLSQueue(
     const { audiobookId } = message.body;
 
     try {
-      const version = Date.now().toString(); // unix timestamp to bust cache
-      await db
-        .update(audiobooks)
-        .set({ version })
-        .where(eq(audiobooks.id, audiobookId));
-
       const hlsJob: HLSJobData = {
         audiobookId,
         outputBucket: env.MEDIA_BUCKET_NAME,
-        outputPrefix: `audiobooks/${audiobookId}/hls/${version}/`,
+        outputPrefix: `audiobooks/${audiobookId}/hls/`, // will add version suffix in HLS worker
       };
       console.log(
         `[hls queue] Triggering job for audiobook ${audiobookId} with payload:`,

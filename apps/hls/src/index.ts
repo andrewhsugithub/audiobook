@@ -39,12 +39,15 @@ const store = storage.getInstance();
 const db = getDb(DATABASE_URL);
 
 async function main(): Promise<void> {
-  const { audiobookId, outputBucket, outputPrefix } = job;
+  const { audiobookId, outputBucket, outputPrefix: tmpPrefix } = job;
+  const version = Date.now().toString(); // unix timestamp to bust cache
+  const outputPrefix = tmpPrefix + version + "/"; // final output prefix with version for cache busting
 
   console.log("═".repeat(60));
   console.log(`🎬 HLS Generation starting`);
   console.log(`   Book:     ${audiobookId}`);
   console.log(`   Output:   ${outputBucket}/${outputPrefix}`);
+  console.log(`   Version:  ${version}`);
   console.log("═".repeat(60));
 
   const workDir = `tmp/hls_${audiobookId}`;
@@ -102,9 +105,9 @@ async function main(): Promise<void> {
     await db
       .update(audiobooks)
       .set({
+        version,
         status: "completed",
         errorMessage: null,
-        updatedAt: new Date(),
       })
       .where(eq(audiobooks.id, audiobookId));
 
