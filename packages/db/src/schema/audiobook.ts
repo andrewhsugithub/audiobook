@@ -22,7 +22,6 @@ export const audiobookVisibilityEnum = pgEnum("audiobook_visibility", [
 export const audiobookStatusEnum = pgEnum("audiobook_status", [
   "initiated",
   "ready_to_upload",
-  "finished_upload", // S3 has successfully assembled the raw text/pdf chunks
   "processing",
   // "parsing", // Worker is extracting text and metadata from the raw file
   // "finished_parsing",

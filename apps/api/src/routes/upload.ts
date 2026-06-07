@@ -83,7 +83,7 @@ app.post("/", zValidator("json", initiateSchema), async (c) => {
         title: bookTitle,
         author: body.author ?? null,
         description: body.description ?? null,
-        status: "finished_upload",
+        status: "processing",
         rawFileName: generatedFileName,
         rawFileSizeBytes: textBytes.length,
         mimeType: "text/plain",
@@ -257,7 +257,7 @@ app.post("/complete", zValidator("json", completeSchema), async (c) => {
 
   await db
     .update(audiobooks)
-    .set({ status: "finished_upload" })
+    .set({ status: "processing" })
     .where(eq(audiobooks.id, bookId));
 
   await db
@@ -272,7 +272,7 @@ app.post("/complete", zValidator("json", completeSchema), async (c) => {
     fileName,
   } satisfies ParserJobData);
 
-  return c.json({ ok: true, bookId, status: "processing" } as const, 200, {
+  return c.json({ ok: true, bookId, status: "finished_upload" } as const, 200, {
     "Cache-Control": "private, no-store",
   });
 });

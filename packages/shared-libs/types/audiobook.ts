@@ -1,6 +1,5 @@
 export type AudiobookStatus =
   | "ready_to_upload"
-  | "finished_upload"
   | "processing"
   | "completed"
   | "failed"
