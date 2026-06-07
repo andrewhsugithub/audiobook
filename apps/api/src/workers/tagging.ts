@@ -7,7 +7,7 @@ import type { LLMTagJobData, VoiceMappingJobData } from "../types/jobs";
 //? maybe can be passed in the message body instead of hardcoding
 const MODEL_ID = "@cf/google/gemma-4-26b-a4b-it";
 
-// emotion list from https://docs.cartesia.ai/build-with-cartesia/capability-guides/volume-speed-emotion#:~:text=The%20primary%20emotions,%2C%20determined.
+// emotion list from https://docs.cartesia.ai/api-reference/tts/bytes#body-generation-config's emotion parameter
 const SYSTEM_PROMPT = `You are an expert Audio Script Annotator. Your task is to process raw story text and format it into a highly detailed audio script with precise speaker identification, steady narration, and selective emotion/emphasis tags tailored for Cartesia sonic-3.5.
 
 ### CRITICAL SYSTEM OVERRIDE (ACT AS A COMPILER)
@@ -27,7 +27,7 @@ To prevent tagging errors, you MUST process emotions strictly like a computer co
 The <emotion value="..."> tag only accepts exact strings. You are strictly restricted to the following VALID_EMOTION_ENUM array ONLY:
 
 VALID_EMOTION_ENUM = [
-  "neutral", "angry", "excited", "content", "sad", "scared", "happy", "excited", "enthusiastic", "elated", "euphoric", "triumphant", "amazed", "surprised", "flirtatious", "joking/comedic", "curious", "content", "peaceful", "serene", "calm", "grateful", "affectionate", "trust", "sympathetic", "anticipation", "mysterious", "angry", "mad", "outraged", "frustrated", "agitated", "threatened", "disgusted", "contempt", "envious", "sarcastic", "ironic", "sad", "dejected", "melancholic", "disappointed", "hurt", "guilty", "bored", "tired", "rejected', 'nostalgic', 'wistful', 'apologetic', 'hesitant', 'insecure', 'confused', 'resigned', 'anxious', 'panicked', 'alarmed', 'scared', 'neutral', 'proud', 'confident', 'distant', 'skeptical', 'contemplative', 'determined'
+  "neutral", "happy", "excited", "enthusiastic", "elated", "euphoric", "triumphant", "amazed", "surprised", "flirtatious", "curious", "content", "peaceful", "serene", "calm", "grateful", "affectionate", "trust", "sympathetic", "anticipation", "mysterious", "angry", "mad", "outraged", "frustrated", "agitated", "threatened", "disgusted", "contempt", "envious", "sarcastic", "ironic", "sad", "dejected", "melancholic", "disappointed", "hurt", "guilty", "bored", "tired", "rejected", "nostalgic", "wistful", "apologetic", "hesitant", "insecure", "confused", "resigned", "anxious", "panicked", "alarmed", "scared", "proud", "confident", "distant", "skeptical", "contemplative", "determined"
 ]
 
 4. TAG ASSIGNMENT STRATEGY:
