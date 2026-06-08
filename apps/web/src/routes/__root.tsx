@@ -12,6 +12,7 @@ import '../styles.css'
 import type { QueryClient } from '@tanstack/react-query'
 import { ToastProvider } from '../components/Toast'
 import { ReactQueryDevtools } from '@tanstack/react-query-devtools'
+import { GlobalAudioPlayer } from '../components/GlobalAudioPlayer'
 
 export const Route = createRootRouteWithContext<{
   queryClient: QueryClient
@@ -75,23 +76,26 @@ function NotFoundComponent() {
 function RootComponent() {
   return (
     <ToastProvider>
-      <HeadContent />
-      <Outlet />
-      <TanStackDevtools
-        config={{
-          position: 'bottom-right',
-        }}
-        plugins={[
-          {
-            name: 'TanStack Router',
-            render: <TanStackRouterDevtoolsPanel />,
-          },
-          {
-            name: 'React Query',
-            render: <ReactQueryDevtools initialIsOpen={false} />,
-          },
-        ]}
-      />
+      <div className="pb-32">
+        <HeadContent />
+        <Outlet />
+        <TanStackDevtools
+          config={{
+            position: 'bottom-right',
+          }}
+          plugins={[
+            {
+              name: 'TanStack Router',
+              render: <TanStackRouterDevtoolsPanel />,
+            },
+            {
+              name: 'React Query',
+              render: <ReactQueryDevtools initialIsOpen={false} />,
+            },
+          ]}
+        />
+      </div>
+      <GlobalAudioPlayer />
     </ToastProvider>
   )
 }

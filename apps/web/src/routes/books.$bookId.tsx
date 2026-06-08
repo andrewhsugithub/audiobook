@@ -1,10 +1,10 @@
 import { createFileRoute, Link } from '@tanstack/react-router'
 import { useEffect, useState, useRef } from 'react'
+import { usePlayTrack } from '../hooks/usePlayTrack'
+import { Play, Square } from 'lucide-react'
 
 import Header from '../components/Header'
 import Rating from '../components/Rating'
-import { HlsAudioPlayer } from '../components/HlsAudio'
-import { useHlsStream } from '../hooks/useHlsStream'
 import {
   useAudiobookInfo,
   useAudiobookUploader,
@@ -18,7 +18,6 @@ import {
   useRemoveFromLibrary,
 } from '../hooks/useLibrary'
 import BookmarkButton from '../components/BookmarkButton'
-import { API_BASE_URL as BASE_URL } from '../utils/api'
 import { useToast } from '../components/Toast'
 
 export const Route = createFileRoute('/books/$bookId')({
@@ -60,11 +59,18 @@ function BookComponent() {
   const uploader = uploaderData?.uploader
 
   const {
+    handlePlay,
+    isPlaying,
+    isCurrentTrack,
     isLoading: isStreamLoading,
-    isError: isStreamError,
     error: streamError,
-    isSuccess: isStreamReady,
-  } = useHlsStream(bookId, { enabled: book?.isReady === true })
+  } = usePlayTrack({
+    bookId,
+    version: book?.version || 'unknown',
+    title: book?.title ?? '',
+    author: book?.author ?? '',
+    uploader: uploader?.name ?? '',
+  })
 
   // ── Dynamic Permissions Configuration ──────────────────────────────
   // - Admin: can modify anything anywhere
@@ -327,8 +333,9 @@ function BookComponent() {
                       />
                     </div>
 
-                    {/* Right Column: Player & Status Messaging Matrix (Stretches to fill line) */}
-                    <div className="flex-1 min-w-0 flex flex-col justify-center">
+                    {/* Right Column: Player & Status */}
+                    <div className="flex-1 min-w-0 flex flex-col justify-center gap-3">
+                      {/* Not ready states */}
                       {book?.isReady === false &&
                         (book.status === 'initiated' ? (
                           <div className="text-sm text-error p-3 bg-red-500/10 rounded-lg border border-red-500/20">
@@ -348,26 +355,49 @@ function BookComponent() {
                           </div>
                         ))}
 
-                      {(isInfoLoading || isStreamLoading) &&
-                        book?.isReady === true && (
-                          <div className="text-sm text-[var(--sea-ink-soft)] opacity-80 animate-pulse flex items-center gap-2 py-2">
-                            <span>🔒</span> Establishing secure audio stream
-                            connection…
-                          </div>
-                        )}
-
-                      {isStreamError && (
+                      {/* Stream error */}
+                      {streamError && (
                         <div className="text-sm text-error p-3 bg-red-500/10 rounded-lg border border-red-500/20">
-                          ⚠️ Secure Stream Error: {streamError.message}
+                          ⚠️ Stream Error: {streamError}
                         </div>
                       )}
 
-                      {isStreamReady && book?.version && (
-                        <div className="w-full">
-                          <HlsAudioPlayer
-                            src={`${BASE_URL}/audiobook/${bookId}/${book.version}/master.m3u8`}
-                            title={book?.title}
-                          />
+                      {/* Play button — only shown when book is ready */}
+                      {book?.isReady === true && (
+                        <div className="flex items-center gap-3">
+                          <button
+                            type="button"
+                            onClick={handlePlay}
+                            disabled={isStreamLoading}
+                            className={`btn btn-lg gap-2 ${
+                              isCurrentTrack
+                                ? 'btn-outline btn-error'
+                                : 'btn-primary'
+                            }`}
+                          >
+                            {isStreamLoading ? (
+                              <>
+                                <span className="loading loading-spinner loading-sm" />
+                                Connecting…
+                              </>
+                            ) : isCurrentTrack ? (
+                              <>
+                                <Square className="h-5 w-5" />
+                                Stop
+                              </>
+                            ) : (
+                              <>
+                                <Play className="h-5 w-5" />
+                                Play
+                              </>
+                            )}
+                          </button>
+
+                          {isCurrentTrack && (
+                            <span className="text-sm text-[var(--sea-ink-soft)] animate-pulse">
+                              🎵 Now playing in player below
+                            </span>
+                          )}
                         </div>
                       )}
                     </div>
