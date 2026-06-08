@@ -106,6 +106,10 @@ export async function handleTaggingQueue(
           { role: "system", content: SYSTEM_PROMPT },
           { role: "user", content: rawText },
         ],
+        temperature: 0.15,
+        top_k: 40,
+        top_p: 0.85,
+        repetition_penalty: 1.1,
       })) as unknown as OpenAI.Chat.Completions.ChatCompletion;
       // TODO: try refactoring to the addTags function, without instantiating a new OpenAI client in that function, investigate in the direction of putting client in hono's binding/env and reusing it across the app
       // const response = await addTags(message.body);
